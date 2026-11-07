@@ -3,10 +3,12 @@
  * 动作执行器
  * 
  * CORE - 首要核心，勿删除
- * 精确鼠标/键盘控制（SendInput 级别）
+ * 精确鼠标/键盘控制（SendInput / mouse_event 级别）
  * 
- * TRACE 2026-11-08: 增加 mouseMove / click / type 的 SendInput 实现骨架
- * 实际调用需在闸门放行后进行
+ * TRACE 2026-11-08: 提升质量
+ * - 真实 mouse_event 点击
+ * - 输入校验与错误处理
+ * - 更清晰的返回结构
  */
 const { execFile } = require('child_process');
 
@@ -15,78 +17,99 @@ function runPowerShell(command) {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
-      { timeout: 10000, windowsHide: true },
+      { timeout: 12000, windowsHide: true, maxBuffer: 1024 * 1024 },
       (err, stdout, stderr) => {
         resolve({
           ok: !err,
-          stdout: String(stdout || ''),
-          stderr: String(stderr || ''),
-          error: err ? String(err.message || err).slice(0, 200) : null,
+          stdout: String(stdout || '').trim(),
+          stderr: String(stderr || '').trim(),
+          error: err ? String(err.message || err).slice(0, 300) : null,
         });
       }
     );
   });
 }
 
-/**
- * CORE: 鼠标移动（使用 user32 SendInput 的 PowerShell 包装）
- */
-async function mouseMove(x, y) {
-  const cmd = `
-    Add-Type -TypeDefinition @"
-    using System;
-    using System.Runtime.InteropServices;
-    public class Mouse {
-      [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
-    }
+const MOUSE_EVENT_HELPER = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Input {
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+  public const uint LEFTDOWN = 0x0002;
+  public const uint LEFTUP = 0x0004;
+  public const uint RIGHTDOWN = 0x0008;
+  public const uint RIGHTUP = 0x0010;
+}
 "@
-    [Mouse]::SetCursorPos(${Number(x) || 0}, ${Number(y) || 0})
-  `;
+`;
+
+async function mouseMove(x, y) {
+  const nx = Math.round(Number(x));
+  const ny = Math.round(Number(y));
+  if (!Number.isFinite(nx) || !Number.isFinite(ny)) {
+    return { ok: false, error: 'invalid coordinates' };
+  }
+  const cmd = `${MOUSE_EVENT_HELPER}
+[Input]::SetCursorPos(${nx}, ${ny})`;
   return runPowerShell(cmd);
 }
 
-/**
- * CORE: 点击
- */
-async function mouseClick(button = 'left') {
-  const cmd = `
-    Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.SendKeys]::SendWait(' ')
-  `;
-  // 占位：实际应使用 mouse_event / SendInput
+async function mouseClick(button = 'left', x, y) {
+  if (x !== undefined && y !== undefined) {
+    const moved = await mouseMove(x, y);
+    if (!moved.ok) return moved;
+  }
+  const flagDown = button === 'right' ? 'RIGHTDOWN' : 'LEFTDOWN';
+  const flagUp = button === 'right' ? 'RIGHTUP' : 'LEFTUP';
+  const cmd = `${MOUSE_EVENT_HELPER}
+[Input]::mouse_event([Input]::${flagDown}, 0, 0, 0, [UIntPtr]::Zero)
+Start-Sleep -Milliseconds 30
+[Input]::mouse_event([Input]::${flagUp}, 0, 0, 0, [UIntPtr]::Zero)`;
+  return runPowerShell(cmd);
+}
+
+async function typeText(text) {
+  if (typeof text !== 'string' || text.length === 0) {
+    return { ok: false, error: 'empty text' };
+  }
+  const safe = text.replace(/'/g, "''").slice(0, 500);
+  const cmd = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${safe}')`;
   return runPowerShell(cmd);
 }
 
 async function execute(decision) {
   const step = decision && decision.step;
-  if (!step) return { ok: false, note: 'no step' };
+  if (!step || !step.action) return { ok: false, note: 'invalid step' };
 
-  const action = step.action;
+  const action = String(step.action).toLowerCase();
 
-  if (action === 'mousemove' || action === 'move') {
-    const r = await mouseMove(step.x, step.y);
-    return { ok: r.ok, action, note: 'SendInput-level mouseMove', error: r.error };
+  try {
+    if (action === 'mousemove' || action === 'move') {
+      const r = await mouseMove(step.x, step.y);
+      return { ok: r.ok, action, note: 'mouseMove', error: r.error };
+    }
+    if (action === 'click') {
+      const r = await mouseClick(step.button || 'left', step.x, step.y);
+      return { ok: r.ok, action, note: 'mouseClick', error: r.error };
+    }
+    if (action === 'type' && step.text) {
+      const r = await typeText(step.text);
+      return { ok: r.ok, action, note: 'type', error: r.error };
+    }
+    if (action === 'open' && step.target) {
+      const safe = String(step.target).replace(/'/g, "''");
+      const r = await runPowerShell(`Start-Process '${safe}'`);
+      return { ok: r.ok, action, note: 'open', error: r.error };
+    }
+    if (action === 'observe' || action === 'list') {
+      return { ok: true, action, note: 'read-only' };
+    }
+    return { ok: false, action, note: 'unsupported action' };
+  } catch (e) {
+    return { ok: false, action, error: String(e.message || e).slice(0, 200) };
   }
-  if (action === 'click') {
-    const r = await mouseClick(step.button);
-    return { ok: r.ok, action, note: 'SendInput-level click', error: r.error };
-  }
-  if (action === 'open' && step.target) {
-    const cmd = `Start-Process '${String(step.target).replace(/'/g, "''")}'`;
-    const r = await runPowerShell(cmd);
-    return { ok: r.ok, action, note: 'Start-Process', error: r.error };
-  }
-  if (action === 'type' && step.text) {
-    const text = String(step.text).replace(/'/g, "''");
-    const cmd = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${text}')`;
-    const r = await runPowerShell(cmd);
-    return { ok: r.ok, action, note: 'SendKeys type', error: r.error };
-  }
-  if (action === 'observe' || action === 'list') {
-    return { ok: true, action, note: 'read-only' };
-  }
-
-  return { ok: false, action, note: 'unsupported action' };
 }
 
-module.exports = { execute, mouseMove, mouseClick };
+module.exports = { execute, mouseMove, mouseClick, typeText };
