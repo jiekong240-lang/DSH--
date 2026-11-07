@@ -17,22 +17,27 @@
   - 可访问性树 / UI 元素定位骨架（`accessibility.js`）
   - 任务多步规划与失败恢复（`task.js` recordFailure / shouldRetry）
   - Supervisor / Guardian 闭环与人工批准通道（`supervisor.js` requestHumanApproval → state/pending-approvals.json）
+- **质量升级**：
+  - `action.js`：真实 mouse_event 点击、坐标校验、更好的错误返回
+  - `observer.js`：截图稳定性提升（文件存在检查 + 错误信息）
+  - `accessibility.js`：更完整的焦点元素属性（ClassName、BoundingRectangle 等）
+  - `supervisor.js`：更结构化的失败处理与批准请求
 
 ### 证据
-- Git 提交记录：搜索 `feat(cua):` 前缀
+- Git 提交记录：搜索 `refactor(cua):` 与 `feat(cua):` 前缀
 - 代码头部注释含 `CORE - 首要核心，勿删除`
 - `cua/README.md` 已明确标注五大核心模块
 
 ### 当前状态
-- 观察：窗口枚举 + 截图骨架（视觉理解走 API）
-- 动作：SendInput 级别骨架（mouseMove/click/type）
-- 可访问性：焦点窗口信息骨架
+- 观察：窗口枚举 + 更稳定截图（视觉理解走 API）
+- 动作：真实 mouse_event 点击 + 鼠标移动 + type
+- 可访问性：更完整的焦点元素信息
 - 任务：持久化 + 失败记录/重试判断
-- 监督：审计 + 人工批准请求记录
+- 监督：审计 + 结构化人工批准请求
 - 闸门：对齐 sentinel，L3 默认拒绝
 
 ### 下一步（优先级）
-1. 完善截图稳定性与多屏支持
+1. 完善截图多屏支持
 2. 把 accessibility 接入真实 UI Automation 树遍历
 3. 把人工批准通道接到监控大屏或通知
 4. API 调用骨架（观察结果 → 外部视觉/规划 → 动作）
