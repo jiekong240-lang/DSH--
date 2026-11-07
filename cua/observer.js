@@ -1,19 +1,56 @@
 'use strict';
 /**
  * 屏幕与窗口观察
- * 当前为占位实现。后续接入截图、UI Automation、窗口枚举等。
  * 
- * TRACE 2026-11-08: 添加日期标记，方便下次对照进展日志
- * TODO: 用 PowerShell Get-Process / Get-Window 或可访问性接口枚举窗口
+ * TRACE 2026-11-08: 接入 PowerShell 真实窗口枚举
+ * 使用 Get-Process 过滤有 MainWindowTitle 的进程
+ * TODO: 截图、焦点窗口、UI Automation
  */
+const { execFile } = require('child_process');
+
+function runPowerShell(command) {
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
+      { timeout: 8000, windowsHide: true },
+      (err, stdout) => {
+        if (err) return resolve('');
+        resolve(String(stdout || ''));
+      }
+    );
+  });
+}
+
+async function enumerateWindows() {
+  const cmd = `
+    Get-Process | Where-Object { $_.MainWindowTitle -and $_.MainWindowTitle.Trim() -ne '' } |
+    Select-Object ProcessName, Id, MainWindowTitle |
+    ConvertTo-Json -Compress
+  `;
+  const out = await runPowerShell(cmd);
+  if (!out.trim()) return [];
+  try {
+    const parsed = JSON.parse(out);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return [];
+  }
+}
+
 async function observe() {
+  const windows = await enumerateWindows();
   return {
     ts: Date.now(),
-    screenshot: null, // TODO: 实际截图（例如调用 Windows 截图工具或库）
-    windows: [],      // TODO: 枚举窗口
+    screenshot: null, // TODO: 实际截图
+    windows: windows.map((w) => ({
+      process: w.ProcessName,
+      pid: w.Id,
+      title: w.MainWindowTitle,
+    })),
     focus: null,
-    note: 'observer stub — replace with real Windows observation',
+    note: `observer: enumerated ${windows.length} windows via PowerShell`,
   };
 }
 
-module.exports = { observe };
+module.exports = { observe, enumerateWindows };
