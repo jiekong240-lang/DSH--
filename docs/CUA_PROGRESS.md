@@ -5,41 +5,40 @@
 ## 2026-11-08
 
 ### 已完成
-- 建立 `cua/` 目录与最小闭环骨架（index / observer / action / task / supervisor / gate）
-- 根 README 重新定位为 CUA 主线，监控降级为支持
-- 新增 `docs/CUA_ARCHITECTURE.md` 与本日志
-- 所有模块当前为可运行占位，闭环可通过 `node cua/index.js` 验证
+- 建立 `cua/` 目录与最小闭环骨架
 - **supervisor 已支持本地审计日志写入**（`logs/cua-audit.jsonl`）
-- 各模块增加 TRACE 日期标记，便于下次对照
-- **观察模块接入真实窗口枚举**（PowerShell Get-Process 过滤 MainWindowTitle）
-- **闸门对齐 sentinel/gate.cjs**（映射动作到 LEVELS，调用 decide()）
-- **任务契约持久化**（`state/cua-task.json`，支持加载/保存/推进）
-- **动作模块接入基础真实输入**（PowerShell Start-Process / SendKeys，受闸门约束）
+- **观察模块接入真实窗口枚举**（PowerShell）
+- **闸门对齐 sentinel/gate.cjs**
+- **任务契约持久化**（`state/cua-task.json`）
+- **动作模块接入基础真实输入**
+- **CORE（首要核心，勿删除）已落地**：
+  - 屏幕截图（`observer.js` takeScreenshot，保存到 logs/screenshots/）
+  - 精确鼠标/键盘控制骨架（SendInput 级别，`action.js` mouseMove/click）
+  - 可访问性树 / UI 元素定位骨架（`accessibility.js`）
+  - 任务多步规划与失败恢复（`task.js` recordFailure / shouldRetry）
+  - Supervisor / Guardian 闭环与人工批准通道（`supervisor.js` requestHumanApproval → state/pending-approvals.json）
 
 ### 证据
 - Git 提交记录：搜索 `feat(cua):` 前缀
-- 本地运行：`node cua/index.js`
-  - 应能枚举窗口（observation.windows 非空）
-  - 任务写入 `state/cua-task.json`
-  - 审计写入 `logs/cua-audit.jsonl`
-  - open/type 等 L3 动作默认被闸门拦下
-- 代码注释中含 TRACE 2026-11-08 标记
+- 代码头部注释含 `CORE - 首要核心，勿删除`
+- `cua/README.md` 已明确标注五大核心模块
 
 ### 当前状态
-- 观察：真实窗口枚举（无截图）
-- 闸门：已对齐 sentinel，L3 默认拒绝
-- 任务：可持久化、可推进
-- 动作：基础 open/type 可执行（需闸门放行），其余仍受限
-- 审计可落盘
+- 观察：窗口枚举 + 截图骨架（视觉理解走 API）
+- 动作：SendInput 级别骨架（mouseMove/click/type）
+- 可访问性：焦点窗口信息骨架
+- 任务：持久化 + 失败记录/重试判断
+- 监督：审计 + 人工批准请求记录
+- 闸门：对齐 sentinel，L3 默认拒绝
 
 ### 下一步（优先级）
-1. 观察模块加截图
-2. 闸门增加人工批准通道（与哨兵对齐）
-3. 任务失败恢复与重试策略
-4. 动作模块扩展更安全的输入方式（可访问性接口）
+1. 完善截图稳定性与多屏支持
+2. 把 accessibility 接入真实 UI Automation 树遍历
+3. 把人工批准通道接到监控大屏或通知
+4. API 调用骨架（观察结果 → 外部视觉/规划 → 动作）
 
 ### 验证方式
-- 运行 `node cua/index.js` 应输出含窗口列表的观察结果
-- 检查 `state/cua-task.json` 是否生成/更新
-- 检查 `logs/cua-audit.jsonl` 是否有新行
-- 对照本日志与 git log 是否同步
+- 运行 `node cua/index.js`
+- 检查 `logs/screenshots/` 是否产生截图
+- 检查 `state/pending-approvals.json`（L3 动作时）
+- 对照本日志与 `cua/README.md`
