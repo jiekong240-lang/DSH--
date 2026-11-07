@@ -5,7 +5,9 @@
  * CORE - 首要核心，勿删除
  * 屏幕截图 + 视觉理解接口（截图本地完成，视觉理解走 API）
  * 
- * TRACE 2026-11-08: 增加截图能力（PowerShell / .NET）
+ * TRACE 2026-11-08: 提升质量
+ * - 更稳定的截图（错误处理 + 文件存在检查）
+ * - 窗口枚举健壮性
  */
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -16,10 +18,13 @@ function runPowerShell(command) {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
-      { timeout: 15000, windowsHide: true },
+      { timeout: 20000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 },
       (err, stdout) => {
-        if (err) return resolve('');
-        resolve(String(stdout || ''));
+        resolve({
+          ok: !err,
+          stdout: String(stdout || '').trim(),
+          error: err ? String(err.message || err).slice(0, 300) : null,
+        });
       }
     );
   });
@@ -31,52 +36,61 @@ async function enumerateWindows() {
     Select-Object ProcessName, Id, MainWindowTitle |
     ConvertTo-Json -Compress
   `;
-  const out = await runPowerShell(cmd);
-  if (!out.trim()) return [];
+  const r = await runPowerShell(cmd);
+  if (!r.ok || !r.stdout) return [];
   try {
-    const parsed = JSON.parse(out);
+    const parsed = JSON.parse(r.stdout);
     return Array.isArray(parsed) ? parsed : [parsed];
   } catch {
     return [];
   }
 }
 
-/**
- * CORE: 截图
- * 保存到 logs/screenshots/ 并返回路径（供 API 视觉理解使用）
- */
 async function takeScreenshot() {
   const dir = path.join(__dirname, '..', 'logs', 'screenshots');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  } catch (e) {
+    return { path: null, error: 'mkdir failed: ' + e.message };
+  }
   const file = path.join(dir, `screen-${Date.now()}.png`);
+  const fileEsc = file.replace(/\\/g, '\\');
   const cmd = `
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-    $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-    $bmp.Save('${file.replace(/\\/g, '\\')}', [System.Drawing.Imaging.ImageFormat]::Png)
-    $g.Dispose(); $bmp.Dispose()
-    Write-Output '${file.replace(/\\/g, '\\')}'
+    try {
+      Add-Type -AssemblyName System.Windows.Forms
+      Add-Type -AssemblyName System.Drawing
+      $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+      $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+      $g = [System.Drawing.Graphics]::FromImage($bmp)
+      $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+      $bmp.Save('${fileEsc}', [System.Drawing.Imaging.ImageFormat]::Png)
+      $g.Dispose(); $bmp.Dispose()
+      if (Test-Path '${fileEsc}') { Write-Output '${fileEsc}' }
+    } catch {
+      Write-Error $_.Exception.Message
+    }
   `;
-  const out = await runPowerShell(cmd);
-  return out.trim() || null;
+  const r = await runPowerShell(cmd);
+  if (r.ok && r.stdout && fs.existsSync(r.stdout)) {
+    return { path: r.stdout, error: null };
+  }
+  return { path: null, error: r.error || 'screenshot failed' };
 }
 
 async function observe() {
   const windows = await enumerateWindows();
-  const screenshot = await takeScreenshot();
+  const shot = await takeScreenshot();
   return {
     ts: Date.now(),
-    screenshot, // 本地文件路径，可送 API 做视觉理解
+    screenshot: shot.path,
+    screenshotError: shot.error,
     windows: windows.map((w) => ({
       process: w.ProcessName,
       pid: w.Id,
       title: w.MainWindowTitle,
     })),
     focus: null,
-    note: `observer: ${windows.length} windows, screenshot=${!!screenshot}`,
+    note: `observer: ${windows.length} windows, screenshot=${!!shot.path}`,
   };
 }
 
