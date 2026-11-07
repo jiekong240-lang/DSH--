@@ -1,0 +1,67 @@
+{
+  "_comment": "哨兵智能体配置 — 手册§7: 型号配置化, 不写死在代码里。所有密钥只引用环境变量名, 绝不入库不入日志。",
+  "intervalSec": 180,
+  "mode": "assist",
+  "_comment_mode": "shadow=L1+只记录不发送(手册P1); assist=L1提醒真亮,预算/静默仍守门(手册P2)。L2+ 在两种模式下都要授权/批准。",
+  "dedupeWindowMin": 10,
+  "quietHours": ["23:00", "08:00"],
+  "dailyToastBudget": 20,
+  "probes": {
+    "dsh": "http://127.0.0.1:3080",
+    "openDesign": "http://127.0.0.1:17456",
+    "monitorSelf": "http://127.0.0.1:3210/api/metrics"
+  },
+  "watchDirs": [
+    "C:/Users/64562/.dsh/plugins",
+    "C:/Users/64562/Scripts",
+    "C:/Users/64562/.zcode/workspace/fed94a31-679a-45b6-966b-9f7cdf31218b/digital-twin-monitor/state"
+  ],
+  "watchExcludes": "file-registry\\.json|sentinel\\.db|sentinel-reports|\\.log$",
+  "thresholds": {
+    "cpuPct": 90,
+    "memPct": 92,
+    "diskFreePct": 8,
+    "batteryPct": 15
+  },
+  "pool": {
+    "_comment": "DSH 模型池健康情报(本地文件, 零 API 成本): free-ladder-health.json 冷却档 + free-ladder.log 当日失败计数",
+    "dshHome": "C:/Users/64562/WorkBuddy/2026-10-12-13-09-47/dsh-sandbox/dsh-home",
+    "logTailBytes": 262144,
+    "degradedCooling": 6
+  },
+  "report": {
+    "atHour": 8,
+    "dir": "monitor-records/sentinel-reports"
+  },
+  "grants": {
+    "_comment": "L2 逐项授权(前缀语义): 仅允许向哨兵报告目录写 .md, 其余一律默认拒绝",
+    "write_file": ["monitor-records/sentinel-reports"]
+  },
+  "restartDsh": {
+    "_comment": "L3 自愈: 仅在连续2轮探活失败后提案, 用户在大屏点批准(5分钟有效, 一次性)后才执行",
+    "launcher": "launch-dsh.js",
+    "tokenWaitMs": 45000,
+    "approvalTtlMs": 300000
+  },
+  "brain": {
+    "timeoutMs": 12000,
+    "maxTokens": 400,
+    "_comment_candidates": "免费升梯: 依序尝试, 失败档本周期冷却(防死档重试, 对应 P0 探针思路)。全部 free:true。",
+    "candidates": [
+      { "provider": "siliconflow", "model": "zai-org/GLM-5.3-Flash", "baseUrl": "https://api.siliconflow.cn/v1", "apiKeyEnv": "SILICONFLOW_API_KEY", "free": true },
+      { "provider": "siliconflow", "model": "Qwen/Qwen3-8B", "baseUrl": "https://api.siliconflow.cn/v1", "apiKeyEnv": "SILICONFLOW_API_KEY", "free": true },
+      { "provider": "modelscope", "model": "ZhipuAI/GLM-5.2", "baseUrl": "https://api-inference.modelscope.cn/v1", "apiKeyEnv": "MODELSCOPE_API_KEY", "free": true }
+    ],
+    "paid": {
+      "_comment": "付费档默认禁用。启用需此处 enabled=true 且当日已人工『确认付费』(逐笔审计, 余额阈值自动停)。",
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKeyEnv": "DEEPSEEK_API_KEY",
+      "free": false,
+      "enabled": false,
+      "requireHumanConfirm": true,
+      "dailyCostCapCny": 1.0
+    }
+  }
+}
