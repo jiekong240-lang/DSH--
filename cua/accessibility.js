@@ -3,9 +3,11 @@
  * 可访问性树 / UI 元素定位
  * 
  * CORE - 首要核心，勿删除
- * 通过 UI Automation / PowerShell 获取窗口元素信息
+ * 通过 UI Automation 获取窗口元素信息
  * 
- * TRACE 2026-11-08: 初始骨架，后续接入真实 UI Automation
+ * TRACE 2026-11-08: 提升质量
+ * - 更完整的元素属性
+ * - 错误处理
  */
 const { execFile } = require('child_process');
 
@@ -14,32 +16,40 @@ function runPowerShell(command) {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
-      { timeout: 10000, windowsHide: true },
+      { timeout: 12000, windowsHide: true, maxBuffer: 1024 * 1024 },
       (err, stdout) => {
-        resolve(err ? '' : String(stdout || ''));
+        resolve({
+          ok: !err,
+          stdout: String(stdout || '').trim(),
+          error: err ? String(err.message || err).slice(0, 300) : null,
+        });
       }
     );
   });
 }
 
-/**
- * CORE: 获取当前焦点窗口的基础信息（占位，可扩展为完整可访问性树）
- */
 async function getFocusedWindowInfo() {
   const cmd = `
-    Add-Type -AssemblyName UIAutomationClient
-    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
-    if ($focused) {
-      [PSCustomObject]@{
-        Name = $focused.Current.Name
-        ControlType = $focused.Current.ControlType.ProgrammaticName
-        ProcessId = $focused.Current.ProcessId
-      } | ConvertTo-Json -Compress
+    try {
+      Add-Type -AssemblyName UIAutomationClient
+      $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+      if ($focused) {
+        [PSCustomObject]@{
+          Name = $focused.Current.Name
+          ControlType = $focused.Current.ControlType.ProgrammaticName
+          ProcessId = $focused.Current.ProcessId
+          ClassName = $focused.Current.ClassName
+          IsEnabled = $focused.Current.IsEnabled
+          BoundingRectangle = $focused.Current.BoundingRectangle.ToString()
+        } | ConvertTo-Json -Compress
+      }
+    } catch {
+      Write-Error $_.Exception.Message
     }
   `;
-  const out = await runPowerShell(cmd);
-  if (!out.trim()) return null;
-  try { return JSON.parse(out); } catch { return null; }
+  const r = await runPowerShell(cmd);
+  if (!r.ok || !r.stdout) return null;
+  try { return JSON.parse(r.stdout); } catch { return null; }
 }
 
 async function getAccessibilityTree() {
@@ -47,7 +57,7 @@ async function getAccessibilityTree() {
   return {
     ts: Date.now(),
     focused,
-    note: 'accessibility skeleton — expand to full tree as needed',
+    note: focused ? 'focused element retrieved' : 'no focused element',
   };
 }
 
