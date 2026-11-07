@@ -5,12 +5,11 @@
  * CORE - 首要核心，勿删除
  * Supervisor / Guardian 闭环与人工批准通道
  * 
- * TRACE 2026-11-08: 提升质量
- * - 更结构化的决策
- * - 失败时自动请求人工干预记录
+ * TRACE 2026-11-08: 成功运行后触发经验学习（API 总结）
  */
 const fs = require('fs');
 const path = require('path');
+const { onSuccessfulRun } = require('./experience');
 
 const AUDIT_FILE = path.join(__dirname, '..', 'logs', 'cua-audit.jsonl');
 const APPROVAL_FILE = path.join(__dirname, '..', 'state', 'pending-approvals.json');
@@ -73,7 +72,22 @@ async function supervise(ctx) {
     return { continued: true, failed: true, audited: true };
   }
 
-  return { continued: true, audited: true };
+  // 成功运行 → 触发经验学习（API 总结）
+  if (resultOk && ctx.task) {
+    const trace = {
+      taskId: ctx.task.id,
+      goal: ctx.task.goal,
+      steps: ctx.task.steps,
+      result: ctx.result,
+      observationSummary: ctx.verified && ctx.verified.note,
+    };
+    // 非阻塞，失败不影响主流程
+    onSuccessfulRun(trace).catch((e) => {
+      writeAudit({ ...record, note: 'experience summary failed', error: e.message });
+    });
+  }
+
+  return { continued: true, audited: true, experienceTriggered: resultOk };
 }
 
 module.exports = { supervise, writeAudit, requestHumanApproval };
