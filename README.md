@@ -58,14 +58,23 @@ cua/                  # CUA 本体（主线）
   observer.js         # 屏幕观察（截图 / 状态）
   action.js           # 鼠标键盘 / 窗口动作
   task.js             # 任务契约与状态机
-  supervisor.js       # 监督循环
+  supervisor.js       # 监督循环（含审计日志）
   gate.js             # 权限闸门（对齐 sentinel）
 docs/
   CUA_ARCHITECTURE.md # 详细架构与约束
+  CUA_PROGRESS.md     # 进展日志（可追溯）
 sentinel/             # 现有哨兵（支持）
 server.js             # 监控服务（支持）
 public/               # 大屏前端（支持）
+logs/                 # 运行时审计（cua-audit.jsonl）
 ```
+
+## 验证与追溯
+
+- 运行：`node cua/index.js`
+- 查看审计：`logs/cua-audit.jsonl`
+- 对照进展：`docs/CUA_PROGRESS.md`
+- 架构说明：`docs/CUA_ARCHITECTURE.md`
 
 ## 下一步（优先级）
 
@@ -74,7 +83,7 @@ public/               # 大屏前端（支持）
 3. 建立任务契约与失败恢复机制
 4. 监控大屏降级为运维工具
 
-详见 `docs/CUA_ARCHITECTURE.md` 和 `cua/README.md`。
+详见 `docs/CUA_ARCHITECTURE.md`、`docs/CUA_PROGRESS.md` 和 `cua/README.md`。
 
 ---
 
