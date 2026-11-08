@@ -1,0 +1,21 @@
+{
+  "skill": "jarvis-particles",
+  "test_cases": [
+    {
+      "input": "add a new particle shape",
+      "should_trigger": true
+    },
+    {
+      "input": "fix CUDA particle generation",
+      "should_trigger": true
+    },
+    {
+      "input": "change particle count or animation",
+      "should_trigger": true
+    },
+    {
+      "input": "export a STEP file",
+      "should_trigger": false
+    }
+  ]
+}
