@@ -1,0 +1,21 @@
+{
+  "skill": "cua-core",
+  "test_cases": [
+    {
+      "input": "implement observe decide act verify loop",
+      "should_trigger": true
+    },
+    {
+      "input": "route agent-desktop click by ref",
+      "should_trigger": true
+    },
+    {
+      "input": "add permission check before action",
+      "should_trigger": true
+    },
+    {
+      "input": "draw a particle animation",
+      "should_trigger": false
+    }
+  ]
+}
