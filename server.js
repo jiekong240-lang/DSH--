@@ -1,6 +1,6 @@
 /* ============================================================
  * 贾维斯 · 实时对话服务 (零依赖, Node 原生)
- * 静态托管 public/  +  /api/chat 对话端点
+ * 静态托管 public/  +  /api/chat 对话端点（返回 shape 提示）
  * ============================================================ */
 const http = require('http');
 const fs = require('fs');
@@ -31,14 +31,25 @@ function readBody(req) {
   });
 }
 
-/* 本地贾维斯风格回复（可后续接外部 API） */
+/* 本地贾维斯回复 + 形状提示（可后续接外部 API 返回更精确的 shape） */
 function localJarvisReply(message) {
-  const m = String(message || '').trim();
-  if (!m) return '请说明你要做什么。';
-  if (/(帮忙|帮我|能不能|可以)/i.test(m)) return '可以。直接说具体动作或目标。';
-  if (/(状态|怎么样|现在)/i.test(m)) return '当前处于对话就绪状态。需要我做什么？';
-  if (/(打开|点击|输入|操作)/i.test(m)) return '收到。对话层已就绪，执行层（CUA）可后续对接。先说具体步骤。';
-  return `收到：「${m.slice(0, 80)}」。我在。继续说。`;
+  const m = String(message || '').trim().toLowerCase();
+  let shape = null;
+  let reply = `收到：「${message.slice(0, 80)}」。我在。继续说。`;
+
+  if (/(哈里发|burj|khalifa|塔|大厦|建筑)/i.test(m)) {
+    shape = 'tower';
+    reply = '收到。正在用流沙堆积哈里发塔轮廓。';
+  } else if (/(球|圆|星球|地球)/i.test(m)) {
+    shape = 'sphere';
+    reply = '收到。正在用流沙堆积成球体。';
+  } else if (/(帮忙|帮我|能不能|可以)/i.test(m)) {
+    reply = '可以。直接说具体动作或目标。';
+  } else if (/(状态|怎么样|现在)/i.test(m)) {
+    reply = '当前处于对话就绪状态。粒子系统在 GPU 上运行。';
+  }
+
+  return { reply, shape };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -52,9 +63,9 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try { body = JSON.parse(raw || '{}'); } catch { /* ignore */ }
     const message = String(body.message || '').slice(0, 2000);
-    const reply = localJarvisReply(message);
+    const result = localJarvisReply(message);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ reply, ts: Date.now() }));
+    res.end(JSON.stringify({ reply: result.reply, shape: result.shape, ts: Date.now() }));
     return;
   }
 

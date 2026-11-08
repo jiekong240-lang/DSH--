@@ -1,17 +1,18 @@
 /* ============================================================
- * 贾维斯 · GPU 粒子系统
- * Three.js WebGL + 自定义 Shader，渲染在 GPU，仿真在 CPU（可控、可扩展）
- * 工程取舍：类型数组、资源复用、清晰生命周期、可配置参数
+ * 贾维斯 · GPU 粒子系统 + 流沙式形状成形
+ * Three.js WebGL + 自定义 Shader
+ * 对话识别主题 → 生成目标点云 → 粒子流动堆积成形
+ * 工程取舍：类型数组、预分配目标、阻尼沉降、GPU 渲染
  * ============================================================ */
 import * as THREE from 'three';
 
 const CONFIG = {
-  PARTICLE_COUNT: 8000,
-  ATTRACTOR: { x: 0, y: 0.2, z: 0 },
-  BASE_SPEED: 0.012,
-  ACTIVITY_BOOST: 0.045,
-  DAMPING: 0.965,
-  POINT_SIZE: 2.8,
+  PARTICLE_COUNT: 12000,
+  BASE_SPEED: 0.018,
+  ACTIVITY_BOOST: 0.06,
+  DAMPING: 0.97,
+  SETTLE_DAMPING: 0.88,
+  POINT_SIZE: 2.4,
 };
 
 const canvas = document.getElementById('scene');
@@ -22,9 +23,64 @@ const statusEl = document.getElementById('status');
 const pcountEl = document.getElementById('pcount');
 
 let activity = 0;
+let currentShape = null;
+let targetPoints = null;
+let targetAssignments = null;
 let renderer, scene, camera, points, geometry, material;
 let positions, velocities;
 
+/* ---------- 形状点云生成 ---------- */
+function generateTower(n = 1800) {
+  const pts = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const t = i / n;
+    const height = (t - 0.5) * 7.2;
+    const taper = 1.0 - t * 0.72;
+    const angle = t * Math.PI * 18 + Math.random() * 0.4;
+    const r = (0.35 + Math.random() * 0.45) * taper;
+    pts[i * 3] = Math.cos(angle) * r;
+    pts[i * 3 + 1] = height;
+    pts[i * 3 + 2] = Math.sin(angle) * r * 0.6;
+  }
+  return pts;
+}
+
+function generateSphere(n = 1600) {
+  const pts = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const phi = Math.acos(2 * Math.random() - 1);
+    const theta = Math.random() * Math.PI * 2;
+    const r = 2.4 + (Math.random() - 0.5) * 0.3;
+    pts[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    pts[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) * 0.85;
+    pts[i * 3 + 2] = r * Math.cos(phi);
+  }
+  return pts;
+}
+
+const SHAPES = {
+  tower: generateTower,
+  sphere: generateSphere,
+};
+
+function setShape(name) {
+  if (!name || !SHAPES[name]) {
+    currentShape = null;
+    targetPoints = null;
+    targetAssignments = null;
+    return;
+  }
+  currentShape = name;
+  targetPoints = SHAPES[name]();
+  const tn = targetPoints.length / 3;
+  targetAssignments = new Uint16Array(CONFIG.PARTICLE_COUNT);
+  for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+    targetAssignments[i] = Math.floor(Math.random() * tn);
+  }
+  activity = 1.0;
+}
+
+/* ---------- Three.js 初始化 ---------- */
 function init() {
   renderer = new THREE.WebGLRenderer({
     canvas,
@@ -38,7 +94,7 @@ function init() {
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
-  camera.position.set(0, 0, 8);
+  camera.position.set(0, 0, 9);
 
   createParticles();
   window.addEventListener('resize', onResize);
@@ -55,13 +111,13 @@ function createParticles() {
 
   for (let i = 0; i < n; i++) {
     const i3 = i * 3;
-    positions[i3] = (Math.random() - 0.5) * 12;
-    positions[i3 + 1] = (Math.random() - 0.5) * 8;
-    positions[i3 + 2] = (Math.random() - 0.5) * 4;
-    velocities[i3] = (Math.random() - 0.5) * 0.02;
-    velocities[i3 + 1] = (Math.random() - 0.5) * 0.02;
-    velocities[i3 + 2] = (Math.random() - 0.5) * 0.01;
-    sizes[i] = 0.6 + Math.random() * 1.4;
+    positions[i3] = (Math.random() - 0.5) * 14;
+    positions[i3 + 1] = (Math.random() - 0.5) * 10;
+    positions[i3 + 2] = (Math.random() - 0.5) * 5;
+    velocities[i3] = (Math.random() - 0.5) * 0.015;
+    velocities[i3 + 1] = (Math.random() - 0.5) * 0.015;
+    velocities[i3 + 2] = (Math.random() - 0.5) * 0.008;
+    sizes[i] = 0.5 + Math.random() * 1.6;
     phases[i] = Math.random() * Math.PI * 2;
   }
 
@@ -87,10 +143,10 @@ function createParticles() {
 
       void main() {
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        float size = aSize * (1.0 + uActivity * 1.6);
-        gl_PointSize = size * uPixelRatio * (180.0 / -mvPosition.z);
+        float size = aSize * (1.0 + uActivity * 1.4);
+        gl_PointSize = size * uPixelRatio * (200.0 / -mvPosition.z);
         gl_Position = projectionMatrix * mvPosition;
-        vAlpha = 0.35 + uActivity * 0.5 + sin(uTime * 1.2 + aPhase) * 0.08;
+        vAlpha = 0.32 + uActivity * 0.52 + sin(uTime * 1.1 + aPhase) * 0.07;
         vActivity = uActivity;
       }
     `,
@@ -101,8 +157,8 @@ function createParticles() {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float d = length(uv);
         if (d > 0.5) discard;
-        float soft = smoothstep(0.5, 0.15, d);
-        vec3 color = mix(vec3(0.25, 0.55, 1.0), vec3(0.0, 0.9, 1.0), vActivity);
+        float soft = smoothstep(0.5, 0.12, d);
+        vec3 color = mix(vec3(0.22, 0.52, 1.0), vec3(0.0, 0.92, 1.0), vActivity);
         gl_FragColor = vec4(color, soft * vAlpha);
       }
     `,
@@ -116,37 +172,46 @@ function createParticles() {
 }
 
 function updateParticles(dt) {
-  activity *= Math.pow(0.96, dt * 60);
+  activity *= Math.pow(0.955, dt * 60);
   material.uniforms.uActivity.value = activity;
   material.uniforms.uTime.value += dt;
 
-  const attract = CONFIG.ATTRACTOR;
   const boost = CONFIG.BASE_SPEED + activity * CONFIG.ACTIVITY_BOOST;
   const n = CONFIG.PARTICLE_COUNT;
+  const hasTarget = targetPoints && targetAssignments;
 
   for (let i = 0; i < n; i++) {
     const i3 = i * 3;
-    const dx = attract.x - positions[i3];
-    const dy = attract.y - positions[i3 + 1];
-    const dz = attract.z - positions[i3 + 2];
+    let tx = 0, ty = 0.2, tz = 0;
+
+    if (hasTarget) {
+      const ti = targetAssignments[i] * 3;
+      tx = targetPoints[ti];
+      ty = targetPoints[ti + 1];
+      tz = targetPoints[ti + 2];
+    }
+
+    const dx = tx - positions[i3];
+    const dy = ty - positions[i3 + 1];
+    const dz = tz - positions[i3 + 2];
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
-    const force = boost * (1.0 - Math.min(1.0, dist / 6.0));
+    const force = boost * (1.0 - Math.min(1.0, dist / 7.0));
 
     velocities[i3] += (dx / dist) * force;
     velocities[i3 + 1] += (dy / dist) * force;
-    velocities[i3 + 2] += (dz / dist) * force * 0.4;
+    velocities[i3 + 2] += (dz / dist) * force * 0.55;
 
-    velocities[i3] *= CONFIG.DAMPING;
-    velocities[i3 + 1] *= CONFIG.DAMPING;
-    velocities[i3 + 2] *= CONFIG.DAMPING;
+    const damp = dist < 0.35 ? CONFIG.SETTLE_DAMPING : CONFIG.DAMPING;
+    velocities[i3] *= damp;
+    velocities[i3 + 1] *= damp;
+    velocities[i3 + 2] *= damp;
 
     positions[i3] += velocities[i3];
     positions[i3 + 1] += velocities[i3 + 1];
     positions[i3 + 2] += velocities[i3 + 2];
 
-    // 边界软反弹
-    if (positions[i3] < -7 || positions[i3] > 7) velocities[i3] *= -0.6;
-    if (positions[i3 + 1] < -5 || positions[i3 + 1] > 5) velocities[i3 + 1] *= -0.6;
+    if (positions[i3] < -8 || positions[i3] > 8) velocities[i3] *= -0.5;
+    if (positions[i3 + 1] < -6 || positions[i3 + 1] > 6) velocities[i3 + 1] *= -0.5;
   }
 
   geometry.attributes.position.needsUpdate = true;
@@ -171,7 +236,7 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-/* ---------- 聊天（与粒子解耦） ---------- */
+/* ---------- 聊天 ---------- */
 const history = [];
 function addMsg(role, text) {
   const div = document.createElement('div');
@@ -198,11 +263,12 @@ async function send(text) {
     });
     const data = await r.json();
     addMsg('jarvis', data.reply || '（无回复）');
+    if (data.shape) setShape(data.shape);
   } catch (e) {
     addMsg('jarvis', '连接失败：' + (e.message || String(e)));
   }
   statusEl.textContent = '就绪';
-  activity = Math.max(activity, 0.65);
+  activity = Math.max(activity, 0.7);
 }
 
 form.addEventListener('submit', (e) => {
@@ -210,6 +276,6 @@ form.addEventListener('submit', (e) => {
   send(input.value);
 });
 
-addMsg('jarvis', '我是贾维斯。粒子渲染已切到 GPU。');
+addMsg('jarvis', '我是贾维斯。聊到哈里发塔或球体时，粒子会像流沙一样堆出形状。');
 
 init();
