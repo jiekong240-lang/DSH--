@@ -6,7 +6,8 @@
  * 屏幕截图 + 视觉理解接口（截图本地完成，视觉理解走 API）
  * 混合观察：截图 + 窗口枚举 + 可访问性浅层树
  * 
- * TRACE 2026-11-08: 接入 accessibility 浅层树，形成 HCU 风格混合观察
+ * TRACE 2026-11-08: 多屏支持（VirtualScreen），提升家用机多显示器场景观察质量
+ * 参考 OSWorld / HCU 观察协议 + 截图陈旧研究
  */
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -18,12 +19,12 @@ function runPowerShell(command) {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
-      { timeout: 20000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 },
+      { timeout: 25000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
       (err, stdout) => {
         resolve({
           ok: !err,
           stdout: String(stdout || '').trim(),
-          error: err ? String(err.message || err).slice(0, 300) : null,
+          error: err ? String(err.message || err).slice(0, 400) : null,
         });
       }
     );
@@ -46,6 +47,10 @@ async function enumerateWindows() {
   }
 }
 
+/**
+ * 截取虚拟屏幕（所有监视器的合并范围）
+ * 比 PrimaryScreen 更适合多显示器家用机
+ */
 async function takeScreenshot() {
   const dir = path.join(__dirname, '..', 'logs', 'screenshots');
   try {
@@ -59,7 +64,10 @@ async function takeScreenshot() {
     try {
       Add-Type -AssemblyName System.Windows.Forms
       Add-Type -AssemblyName System.Drawing
-      $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+      $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+      if ($bounds.Width -le 0 -or $bounds.Height -le 0) {
+        $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+      }
       $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
       $g = [System.Drawing.Graphics]::FromImage($bmp)
       $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
@@ -72,7 +80,7 @@ async function takeScreenshot() {
   `;
   const r = await runPowerShell(cmd);
   if (r.ok && r.stdout && fs.existsSync(r.stdout)) {
-    return { path: r.stdout, error: null };
+    return { path: r.stdout, error: null, bounds: 'virtual' };
   }
   return { path: null, error: r.error || 'screenshot failed' };
 }
@@ -93,6 +101,7 @@ async function observe(options = {}) {
     ts: Date.now(),
     screenshot: shot.path,
     screenshotError: shot.error,
+    screenshotBounds: shot.bounds || null,
     windows: windows.map((w) => ({
       process: w.ProcessName,
       pid: w.Id,
@@ -100,7 +109,7 @@ async function observe(options = {}) {
     })),
     accessibility: ax,
     focus: ax && ax.focused ? ax.focused : null,
-    note: `observer: ${windows.length} windows, screenshot=${!!shot.path}, ax=${!!(ax && ax.focused)}`,
+    note: `observer: ${windows.length} windows, screenshot=${!!shot.path}, ax=${!!(ax && ax.focused)}, bounds=${shot.bounds || 'unknown'}`,
     channels: {
       visual: !!shot.path,
       semantic: !!(ax && ax.focused),
