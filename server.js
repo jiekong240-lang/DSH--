@@ -1,6 +1,6 @@
 /* ============================================================
  * 贾维斯 · 实时对话服务
- * 静态托管 + /api/chat + CUDA 计算接口
+ * 静态托管 + /api/chat + CUDA 计算接口（贴合本地硬件）
  * ============================================================ */
 const http = require('http');
 const fs = require('fs');
@@ -74,7 +74,7 @@ function localJarvisReply(message) {
   } else if (/(帮忙|帮我|能不能|可以)/i.test(m)) {
     reply = '可以。直接说具体动作或目标。';
   } else if (/(状态|怎么样|现在)/i.test(m)) {
-    reply = '当前处于对话就绪状态。CUDA 计算层已接入（粒子排斥 + 参数化几何）。';
+    reply = '当前处于对话就绪状态。CUDA 层已按本地硬件自适应（显存与规模自动约束）。';
   }
 
   return { reply, shape };
@@ -94,6 +94,14 @@ const server = http.createServer(async (req, res) => {
     const result = localJarvisReply(message);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ reply: result.reply, shape: result.shape, ts: Date.now() }));
+    return;
+  }
+
+  /* CUDA 硬件信息 */
+  if (url.pathname === '/api/cuda/info' && req.method === 'POST') {
+    const result = await callCuda(['--mode', 'info']);
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(result));
     return;
   }
 
@@ -165,6 +173,6 @@ server.listen(PORT, HOST, () => {
   console.log('==============================================');
   console.log('  贾维斯 · 实时对话 + CUDA 加速层  ONLINE');
   console.log(`  http://localhost:${PORT}`);
-  console.log('  CUDA: 粒子排斥 + 参数化几何 + 截面');
+  console.log('  CUDA: 硬件自适应（显存/规模自动约束）');
   console.log('==============================================');
 });
