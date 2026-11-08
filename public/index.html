@@ -3,218 +3,35 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="数字孪生·本地监控中枢 — 3D 代码城市 + 实时编码活动可视化,每3分钟同步系统指标">
-<title>数字孪生 · 本地监控中枢 | DIGITAL TWIN OPS</title>
+<meta name="description" content="贾维斯 · 实时对话粒子智能体">
+<title>贾维斯 · JARVIS</title>
 <link rel="stylesheet" href="/style.css">
-<script type="importmap">
-{ "imports": { "three": "/lib/three.module.js", "three/addons/": "/lib/addons/" } }
-</script>
 </head>
 <body>
-
 <canvas id="scene"></canvas>
 
-<!-- SVG 渐变定义 -->
-<svg width="0" height="0" style="position:absolute">
-  <defs>
-    <linearGradient id="gradCyan" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#00ffa3"/><stop offset=".55" stop-color="#00e5ff"/><stop offset="1" stop-color="#3b82f6"/>
-    </linearGradient>
-    <linearGradient id="gradWarn" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffe07a"/><stop offset="1" stop-color="#ff9f1a"/>
-    </linearGradient>
-    <linearGradient id="gradCrit" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff6b81"/><stop offset="1" stop-color="#ff2f4f"/>
-    </linearGradient>
-    <linearGradient id="gradMag" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#00e5ff"/><stop offset="1" stop-color="#ff2fb3"/>
-    </linearGradient>
-  </defs>
-</svg>
-
 <div id="hud">
-
   <header id="topbar">
     <div class="brand">
       <div class="logo"><span>◈</span></div>
       <div>
-        <h1>数字孪生 · 本地监控中枢</h1>
-        <span class="sub">DIGITAL TWIN · LOCAL OPS CORE v2.6</span>
+        <h1>贾维斯</h1>
+        <span class="sub">JARVIS · REAL-TIME DIALOGUE</span>
       </div>
     </div>
-    <div class="clockbox">
-      <div id="clock">--:--:--</div>
-      <div id="date">----年--月--日</div>
-    </div>
-    <div class="event-filter">
-      <span>时间范围:</span>
-      <input type="number" id="filterFrom" placeholder="from (ms)" style="width:100px">
-      <span>to</span>
-      <input type="number" id="filterTo" placeholder="to (ms)" style="width:100px">
-      <button id="filterBtn" style="margin-left:8px">过滤</button>
-    </div>
     <div class="tstats">
-      <span>FPS<b id="fps">--</b></span>
-      <span>渲染<b id="glver">--</b></span>
-      <span>模式<b id="agentMode" class="idle">待机 IDLE</b></span>
-      <span>服务<b id="svc" class="ok">BOOT</b></span>
-      <span class="rec"></span>
+      <span>状态<b id="status">就绪</b></span>
+      <span>粒子<b id="pcount">--</b></span>
     </div>
   </header>
 
-  <!-- 左侧: 算力负载 -->
-  <aside id="panelL" class="panel hudbox">
-    <i class="ck tr"></i><i class="ck bl"></i>
-    <h2><b class="diamond"></b><span class="cn">算力负载</span><span class="en">COMPUTE LOAD</span><em class="led ok"></em></h2>
-    <div class="panelBody">
-      <div class="gaugeWrap">
-        <svg viewBox="0 0 120 120" class="ring">
-          <circle class="track" cx="60" cy="60" r="52" pathLength="100"/>
-          <circle class="ticks" cx="60" cy="60" r="45" pathLength="120"/>
-          <circle id="cpuArc" class="arc" cx="60" cy="60" r="52" pathLength="100" transform="rotate(-90 60 60)"/>
-        </svg>
-        <div class="ringCenter"><b id="cpuPct">0.0</b><span>CPU %</span></div>
-      </div>
-      <div class="subTitle">核心负载 CORE LOAD</div>
-      <div id="coreBars"></div>
-      <div class="subTitle">处理器信息 PROCESSOR</div>
-      <div class="rows">
-        <div class="row"><span>型号 MODEL</span><b id="cpuModel">--</b></div>
-        <div class="row"><span>核心 CORES</span><b id="cpuCores">--</b></div>
-        <div class="row"><span>频率 CLOCK</span><b id="cpuClock">--</b></div>
-        <div class="row"><span>聚焦文件 FOCUS</span><b id="focusFile">—</b></div>
-      </div>
-      <div class="subTitle">负载历史 HISTORY <em id="histSpan">--</em></div>
-      <canvas id="cpuHist" class="chart"></canvas>
-    </div>
-  </aside>
-
-  <!-- 编码活动流: DSH / ZCODE 工具调用实时上报 -->
-  <section id="feed" class="hudbox feed">
-    <i class="ck tr"></i><i class="ck bl"></i>
-    <h2><b class="diamond"></b><span class="cn">编码活动</span><span class="en">AGENT ACTIVITY</span><em class="led ok" id="feedLed"></em></h2>
-    <div class="feedStats">
-      <span>写码<b id="cntCode">0</b></span>
-      <span>执行<b id="cntExec">0</b></span>
-      <span>检索<b id="cntScan">0</b></span>
-      <span>异常<b id="cntErr">0</b></span>
-    </div>
-    <div id="feedList"></div>
-  </section>
-
-  <!-- 右侧: 资源总览 -->
-  <aside id="panelR" class="panel hudbox">
-    <i class="ck tr"></i><i class="ck bl"></i>
-    <h2><b class="diamond"></b><span class="cn">资源总览</span><span class="en">RESOURCES</span><em class="led ok"></em></h2>
-    <div class="panelBody">
-      <div class="gaugeRow">
-        <div class="gaugeWrap small">
-          <svg viewBox="0 0 120 120" class="ring">
-            <circle class="track" cx="60" cy="60" r="52" pathLength="100"/>
-            <circle id="memArc" class="arc" cx="60" cy="60" r="52" pathLength="100" transform="rotate(-90 60 60)"/>
-          </svg>
-          <div class="ringCenter"><b id="memPct">0.0</b><span>MEM %</span></div>
-        </div>
-        <div class="memInfo rows">
-          <div class="row"><span>已用 USED</span><b id="memUsed">--</b></div>
-          <div class="row"><span>总量 TOTAL</span><b id="memTotal">--</b></div>
-          <div class="row"><span>可用 FREE</span><b id="memFree">--</b></div>
-        </div>
-      </div>
-      <div class="subTitle">磁盘卷 VOLUMES</div>
-      <div id="diskBars"></div>
-      <div class="subTitle">实时网络 NETWORK I/O</div>
-      <div class="netNow">
-        <div class="netCell"><span>↓ 下载 DOWN</span><b id="rxBps">--</b></div>
-        <div class="netCell"><span>↑ 上传 UP</span><b id="txBps">--</b></div>
-      </div>
-      <canvas id="netChart" class="chart"></canvas>
-      <div class="subTitle">系统 SYSTEM</div>
-      <div class="rows">
-        <div class="row"><span>主机 HOST</span><b id="hostName">--</b></div>
-        <div class="row"><span>系统 OS</span><b id="osInfo">--</b></div>
-        <div class="row"><span>架构 ARCH</span><b id="archInfo">--</b></div>
-        <div class="row"><span>显卡 GPU</span><b id="gpuInfo">--</b></div>
-        <div class="row"><span>地址 IP</span><b id="ipInfo">--</b></div>
-        <div class="row"><span>运行 UPTIME</span><b id="upTime">--</b></div>
-      </div>
-    </div>
-  </aside>
-
-  <!-- 真实代码变更: 编辑工具的 old/new 直接上屏 -->
-  <section id="diffPanel" class="hudbox feed diff">
-    <i class="ck tr"></i><i class="ck bl"></i>
-    <h2><b class="diamond"></b><span class="cn">代码变更</span><span class="en">REAL CODE DIFF</span><em class="led ok"></em></h2>
-    <div id="diffFile" class="diffFile empty">编辑任意文件 · 这里显示真实代码变更 ——— REAL CHANGES ONLY</div>
-    <div id="diffBody" class="diffBody"></div>
-  </section>
-
-  <!-- 哨兵智能体: 感知→大脑→权限闸门→影子提案 (每3分钟巡查) -->
-  <section id="sentinelPanel" class="hudbox feed sent">
-    <i class="ck tr"></i><i class="ck bl"></i>
-    <h2><b class="diamond"></b><span class="cn">哨兵智能体</span><span class="en">SENTINEL AGENT</span><em class="led ok" id="sentLed"></em></h2>
-    <div class="sentBody">
-      <div class="sentStats">
-        <span>巡查<b id="sentCycles">0</b></span>
-        <span>周期<b id="sentPeriod">180s</b></span>
-        <span>下轮<b id="sentNext">--:--</b></span>
-        <span>大脑<b id="sentLlm">0 次/今日</b></span>
-        <span>预算<b id="sentBudget">--</b></span>
-      </div>
-      <div class="gateRow">
-        <span class="gLv lv0 on">L0 观察</span>
-        <span class="gLv lv1 on">L1 提醒</span>
-        <span class="gLv lv2">L2 可逆</span>
-        <span class="gLv lv3">L3 敏感</span>
-        <em id="sentMode" class="modeTag">影子 SHADOW</em>
-        <em id="sentBrain" class="brainTag">待命</em>
-      </div>
-      <div class="propWrap">
-        <div class="propHead"><span>▸ 最新提案 LATEST PROPOSAL</span><em id="sentPropAgo"></em></div>
-        <div id="sentProp" class="propCard empty">哨兵巡查中… 出现异常时, 大脑生成结构化提案, 经权限闸门后在影子模式下只记录不执行 — SHADOW MODE</div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 底部: 数据同步 -->
-  <section id="bottombar" class="hudbox">
-    <i class="ck tr"></i><i class="ck bl"></i>
-    <div class="countWrap">
-      <svg viewBox="0 0 120 120" class="ring">
-        <circle class="track" cx="60" cy="60" r="52" pathLength="100"/>
-        <circle id="syncArc" class="arc mag" cx="60" cy="60" r="52" pathLength="100" transform="rotate(-90 60 60)"/>
-      </svg>
-      <div class="ct"><b id="countdown">--:--</b><span>下次同步 NEXT SYNC</span></div>
-    </div>
-    <div class="syncInfo">
-      <div class="row"><span>上次同步 LAST</span><b id="lastSyncTime">--:--:--</b></div>
-      <div class="row"><span>同步状态 STATUS</span><b id="syncState" class="dim">待机 STANDBY</b></div>
-      <div class="row"><span>同步周期 CYCLE</span><b id="cycleInfo">180s / 3min</b></div>
-      <button id="syncNow" class="btn">⚡ 立即同步 SYNC NOW</button>
-    </div>
-  </section>
-
-  <div id="hint">⟲ 拖拽旋转 · 滚轮缩放 · 双击复位 · 悬停 / 点击文件楼宇查看修改详情</div>
-
-  <footer>
-    <div id="tickerTrack"></div>
-  </footer>
-
-  <div id="tooltip"></div>
-  <div id="toasts"></div>
-
-  <div class="scanlines"></div>
-  <div class="vignette"></div>
-
-  <!-- 启动引导 -->
-  <div id="boot">
-    <div class="bootTitle">数字孪生 · 本地监控中枢</div>
-    <div class="bootSub">DIGITAL TWIN OPS CORE — BOOT SEQUENCE</div>
-    <pre id="bootlog"></pre>
-    <div class="bootbar"><i id="bootbarFill"></i></div>
-    <div id="bootPct">0%</div>
+  <div id="chat">
+    <div id="messages"></div>
+    <form id="chatForm">
+      <input id="input" type="text" placeholder="说点什么…" autocomplete="off" autofocus>
+      <button type="submit">发送</button>
+    </form>
   </div>
-
 </div>
 
 <script type="module" src="/app.js"></script>
