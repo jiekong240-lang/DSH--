@@ -4,6 +4,7 @@
  * 对话识别主题 → CUDA 生成高精度点云 → 粒子流动堆积成形
  * 工程取舍：CUDA 优先 + 本地回退、类型数组、GPU 渲染
  * 色调：白底 + 高对比灰色粒子（科技感，形状可辨）
+ * 形状：哈里发塔式分段收分
  * ============================================================ */
 import * as THREE from 'three';
 
@@ -30,19 +31,46 @@ let targetAssignments = null;
 let renderer, scene, camera, points, geometry, material;
 let positions, velocities;
 
-/* ---------- 本地回退形状生成 ---------- */
-function generateTowerLocal(n = 1800) {
+/* ---------- 哈里发塔式局部回退生成 ---------- */
+function generateBurjLocal(n = 2400) {
   const pts = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) {
-    const t = i / n;
-    const height = (t - 0.5) * 7.2;
-    const taper = 1.0 - t * 0.72;
-    const angle = t * Math.PI * 18 + Math.random() * 0.4;
-    const r = (0.35 + Math.random() * 0.45) * taper;
-    pts[i * 3] = Math.cos(angle) * r;
-    pts[i * 3 + 1] = height;
-    pts[i * 3 + 2] = Math.sin(angle) * r * 0.6;
+  let idx = 0;
+
+  // 分段高度与半径（模拟哈里发塔收分）
+  const sections = [
+    { h0: -3.6, h1: -2.2, r: 1.15, twist: 0.0 },
+    { h0: -2.2, h1: -1.0, r: 0.92, twist: 0.4 },
+    { h0: -1.0, h1: 0.4,  r: 0.68, twist: 0.8 },
+    { h0: 0.4,  h1: 1.6,  r: 0.46, twist: 1.2 },
+    { h0: 1.6,  h1: 2.6,  r: 0.28, twist: 1.6 },
+    { h0: 2.6,  h1: 3.4,  r: 0.14, twist: 2.0 },
+    { h0: 3.4,  h1: 3.9,  r: 0.05, twist: 2.4 }, // 尖塔
+  ];
+
+  const perSection = Math.floor(n / sections.length);
+
+  for (const s of sections) {
+    for (let i = 0; i < perSection && idx < n; i++, idx++) {
+      const t = i / perSection;
+      const y = s.h0 + (s.h1 - s.h0) * t;
+      const ang = t * Math.PI * 6 + s.twist + Math.random() * 0.5;
+      const rr = s.r * (0.72 + Math.random() * 0.28);
+      const i3 = idx * 3;
+      pts[i3]     = Math.cos(ang) * rr;
+      pts[i3 + 1] = y;
+      pts[i3 + 2] = Math.sin(ang) * rr * 0.55;
+    }
   }
+
+  // 补齐剩余点
+  while (idx < n) {
+    const i3 = idx * 3;
+    pts[i3] = 0;
+    pts[i3 + 1] = 3.6 + Math.random() * 0.3;
+    pts[i3 + 2] = 0;
+    idx++;
+  }
+
   return pts;
 }
 
@@ -64,7 +92,7 @@ async function fetchCudaPoints(shape) {
     const r = await fetch('/api/cuda/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shape, n: shape === 'tower' ? 2200 : 1800 }),
+      body: JSON.stringify({ shape, n: shape === 'tower' || shape === 'burj' ? 2800 : 1800 }),
     });
     const data = await r.json();
     if (data.ok && Array.isArray(data.points) && data.points.length > 0) {
@@ -99,7 +127,7 @@ async function setShape(name) {
     pts = cudaResult.points;
     usedCuda = cudaResult.cuda;
   } else {
-    pts = name === 'tower' ? generateTowerLocal() : generateSphereLocal();
+    pts = (name === 'tower' || name === 'burj') ? generateBurjLocal() : generateSphereLocal();
   }
 
   targetPoints = pts;
@@ -122,7 +150,7 @@ function init() {
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0xf7f7f8, 1); // 略浅的冷白底，提高对比
+  renderer.setClearColor(0xf7f7f8, 1);
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -190,7 +218,6 @@ function createParticles() {
         float d = length(uv);
         if (d > 0.5) discard;
         float soft = smoothstep(0.48, 0.08, d);
-        // 高对比灰：浅灰边缘 → 深灰核心，形状更清晰
         vec3 color = mix(vec3(0.55, 0.56, 0.58), vec3(0.18, 0.19, 0.21), vActivity);
         gl_FragColor = vec4(color, soft * vAlpha);
       }
