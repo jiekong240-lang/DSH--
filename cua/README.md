@@ -12,20 +12,21 @@ Windows Computer Use Agent 的核心实现目录。
 ## 目标闭环
 
 ```
-观察 (observer + accessibility) → 决策 (task / API) → 执行 (action) → 验证 (observer) → 回写状态
+观察 (observer + accessibility) → 决策 (task / 外部 brain API) → 执行 (action) → 验证 (compareObservations) → 回写状态
 ```
 
-每一步都必须有可追踪的证据（截图、事件、审计）。
+每一步都必须有可追踪的证据（截图、事件、审计、verification）。
 
 ## 模块
 
-- `observer.js` — 屏幕观察 + 截图（CORE）
-- `accessibility.js` — 可访问性树（CORE）
+- `observer.js` — 屏幕观察 + 截图 + 状态对比 + 视觉载荷准备（CORE）
+- `accessibility.js` — 可访问性树 + 名称搜索 + 矩形解析（CORE）
 - `action.js` — 鼠标键盘动作（CORE）
 - `task.js` — 任务契约与失败恢复（CORE）
 - `supervisor.js` — 监督循环与人工批准（CORE）
+- `brain.js` — 外部 API 大脑骨架（可选，环境变量驱动）
 - `gate.js` — 权限闸门
-- `index.js` — 主入口
+- `index.js` — 主入口（已集成验证与名称解析）
 
 ## 原则
 
@@ -34,5 +35,6 @@ Windows Computer Use Agent 的核心实现目录。
 - 不假绿
 - 视觉理解走 API，本地只负责截图与执行
 - 零依赖优先（Node 原生 + 必要时系统调用）
+- 语义通道（名称/可访问性）优先于纯坐标
 
 详见 `../docs/CUA_ARCHITECTURE.md` 与 `../docs/CUA_PROGRESS.md`
