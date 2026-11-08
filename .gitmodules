@@ -2,3 +2,8 @@
 	path = vendors/agent-desktop
 	url = https://github.com/vercel-labs/agent-desktop.git
 	branch = main
+
+[submodule "vendors/freecad/src"]
+	path = vendors/freecad/src
+	url = https://github.com/FreeCAD/FreeCAD.git
+	branch = main
