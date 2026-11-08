@@ -17,11 +17,16 @@
 - 可选验证：gnucleus-freecad-validator（见 vendors/freecad/dependencies.md）
 - 可选高层：build123d
 
-## 前端（贾维斯）
+## 前端（贾维斯）+ 粒子 CUDA
 - Three.js（已在 public/lib/）
-- 可选 CUDA 粒子：cuda/particle_sim.py
+- 粒子仿真：`cuda/particle_sim.py`
+  - 优先 CuPy（cupy-cuda12x），无 CUDA 时回退 NumPy
+  - 按显存自适应粒子上限，大规模排斥采样
+  - 前端优先调用 `/api/cuda/generate`，失败本地生成
+  - 详见 `skills/particle-cuda/SKILL.md` 与 `cuda/dependencies.md`
 
 ## 原则
 - 优先使用仓库内已接入的通道
 - 外部依赖均为可选，不强制安装
+- CUDA 优先但必须可回退
 - 所有变更只提交到仓库
