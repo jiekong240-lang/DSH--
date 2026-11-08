@@ -1,0 +1,4 @@
+[submodule "vendors/agent-desktop"]
+	path = vendors/agent-desktop
+	url = https://github.com/vercel-labs/agent-desktop.git
+	branch = main
