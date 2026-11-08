@@ -16,5 +16,11 @@
 3. **CUA 协作**：agent-desktop 操作 GUI 细节，脚本负责批量精确建模
 4. **输出**：STEP / STL / FCStd，带验证报告
 
+## 高质量依赖（运行与计算）
+详见 `dependencies.md`：
+- gnucleus-freecad-validator（几何验证）
+- build123d（高层级参数化）
+- FreeCAD-DesignProof（参数鲁棒性）
+
 ## 作为 CUA 执行目标
 见 `cua/freecad-tool.js`。
