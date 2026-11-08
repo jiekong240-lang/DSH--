@@ -68,10 +68,13 @@ function localJarvisReply(message) {
   } else if (/(球|圆|星球|地球)/i.test(m)) {
     shape = 'sphere';
     reply = '收到。正在用 CUDA 加速生成球体点云。';
+  } else if (/(截面|切面|section)/i.test(m)) {
+    shape = 'section';
+    reply = '收到。正在生成截面点云。';
   } else if (/(帮忙|帮我|能不能|可以)/i.test(m)) {
     reply = '可以。直接说具体动作或目标。';
   } else if (/(状态|怎么样|现在)/i.test(m)) {
-    reply = '当前处于对话就绪状态。CUDA 计算层已接入（可用时自动启用）。';
+    reply = '当前处于对话就绪状态。CUDA 计算层已接入（粒子排斥 + 参数化几何）。';
   }
 
   return { reply, shape };
@@ -102,6 +105,27 @@ const server = http.createServer(async (req, res) => {
     const shape = String(body.shape || 'tower');
     const n = Math.min(50000, Math.max(100, Number(body.n) || 2000));
     const result = await callCuda(['--mode', 'generate', '--shape', shape, '--n', String(n)]);
+    res.writeHead(200, { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify(result));
+    return;
+  }
+
+  /* CUDA 截面 */
+  if (url.pathname === '/api/cuda/section' && req.method === 'POST') {
+    const raw = await readBody(req);
+    let body = {};
+    try { body = JSON.parse(raw || '{}'); } catch { /* ignore */ }
+    const shape = String(body.shape || 'tower');
+    const plane = String(body.plane || 'xy');
+    const offset = Number(body.offset || 0);
+    const n = Math.min(10000, Math.max(100, Number(body.n) || 800));
+    const result = await callCuda([
+      '--mode', 'section',
+      '--shape', shape,
+      '--plane', plane,
+      '--offset', String(offset),
+      '--n', String(n)
+    ]);
     res.writeHead(200, { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(result));
     return;
@@ -141,6 +165,6 @@ server.listen(PORT, HOST, () => {
   console.log('==============================================');
   console.log('  贾维斯 · 实时对话 + CUDA 加速层  ONLINE');
   console.log(`  http://localhost:${PORT}`);
-  console.log('  CUDA: python cuda/particle_sim.py (可用时自动启用)');
+  console.log('  CUDA: 粒子排斥 + 参数化几何 + 截面');
   console.log('==============================================');
 });
