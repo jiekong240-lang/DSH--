@@ -3,14 +3,12 @@
  * 动作执行器
  *
  * CORE - 首要核心，勿删除
- * 精确鼠标/键盘控制 + agent-desktop Accessibility Tree 通道
- *
- * TRACE 2026-11-08: 可选习惯记录集成 + 更清晰返回
- * TRACE 2026-11-08+: agent-desktop 作为核心操作通道接入
+ * 精确鼠标/键盘控制 + agent-desktop Accessibility Tree 通道 + FreeCAD 高质量 CAD
  */
 const { execFile } = require('child_process');
 const { recordHabit, isEnabled: habitsEnabled } = require('./habits');
 const agentDesktop = require('./agent-desktop-tool');
+const freecad = require('./freecad-tool');
 
 function runPowerShell(command) {
   return new Promise((resolve) => {
@@ -105,6 +103,22 @@ async function execute(decision) {
     return { ok: r.ok, action, note: 'agent-desktop', error: r.error, stdout: r.stdout };
   }
 
+  // FreeCAD 高质量 CAD 通道
+  if (action.startsWith('fc-') || action === 'freecad' || action === 'fc-box' || action === 'fc-step') {
+    let r;
+    if (action === 'fc-box' || action === 'fc-create-box') {
+      r = await freecad.createVerifiedBox(step.length || 50, step.width || 30, step.height || 20, step.outPath);
+    } else if (action === 'fc-script' || action === 'fc-run') {
+      r = await freecad.runScript(step.scriptPath || step.target);
+    } else if (action === 'fc-step' || action === 'fc-export-step') {
+      r = await freecad.exportStep(step.fcstd || step.target, step.outPath);
+    } else {
+      r = await freecad.runScript(step.scriptPath || step.target);
+    }
+    if (r.ok) maybeRecord('freecad', action, { path: step.outPath });
+    return { ok: r.ok, action, note: 'freecad', error: r.error, stdout: r.stdout };
+  }
+
   try {
     if (action === 'mousemove' || action === 'move') {
       const r = await mouseMove(step.x, step.y);
@@ -132,4 +146,4 @@ async function execute(decision) {
   }
 }
 
-module.exports = { execute, mouseMove, mouseClick, typeText, agentDesktop };
+module.exports = { execute, mouseMove, mouseClick, typeText, agentDesktop, freecad };
