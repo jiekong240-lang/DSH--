@@ -5,12 +5,10 @@
  * CORE - 首要核心，勿删除
  * 精确鼠标/键盘控制（SendInput / mouse_event 级别）
  * 
- * TRACE 2026-11-08: 提升质量
- * - 真实 mouse_event 点击
- * - 输入校验与错误处理
- * - 更清晰的返回结构
+ * TRACE 2026-11-08: 可选习惯记录集成 + 更清晰返回
  */
 const { execFile } = require('child_process');
+const { recordHabit, isEnabled: habitsEnabled } = require('./habits');
 
 function runPowerShell(command) {
   return new Promise((resolve) => {
@@ -45,6 +43,13 @@ public class Input {
 "@
 `;
 
+function maybeRecord(type, action, extra = {}) {
+  if (!habitsEnabled()) return;
+  try {
+    recordHabit({ type, action, ...extra });
+  } catch { /* ignore */ }
+}
+
 async function mouseMove(x, y) {
   const nx = Math.round(Number(x));
   const ny = Math.round(Number(y));
@@ -53,7 +58,9 @@ async function mouseMove(x, y) {
   }
   const cmd = `${MOUSE_EVENT_HELPER}
 [Input]::SetCursorPos(${nx}, ${ny})`;
-  return runPowerShell(cmd);
+  const r = await runPowerShell(cmd);
+  if (r.ok) maybeRecord('mouse', 'move', { x: nx, y: ny });
+  return r;
 }
 
 async function mouseClick(button = 'left', x, y) {
@@ -67,7 +74,9 @@ async function mouseClick(button = 'left', x, y) {
 [Input]::mouse_event([Input]::${flagDown}, 0, 0, 0, [UIntPtr]::Zero)
 Start-Sleep -Milliseconds 30
 [Input]::mouse_event([Input]::${flagUp}, 0, 0, 0, [UIntPtr]::Zero)`;
-  return runPowerShell(cmd);
+  const r = await runPowerShell(cmd);
+  if (r.ok) maybeRecord('mouse', 'click', { x, y, meta: button });
+  return r;
 }
 
 async function typeText(text) {
@@ -76,7 +85,9 @@ async function typeText(text) {
   }
   const safe = text.replace(/'/g, "''").slice(0, 500);
   const cmd = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${safe}')`;
-  return runPowerShell(cmd);
+  const r = await runPowerShell(cmd);
+  if (r.ok) maybeRecord('key', 'type', { length: text.length });
+  return r;
 }
 
 async function execute(decision) {
