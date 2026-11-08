@@ -1,0 +1,6 @@
+[srv] [open-probe] started (open-probe v1.0.0, protocol fallback=2025-06-18)
+[srv] [open-probe] initialize: client=2024-11-05 → negotiated=2024-11-05
+PASS initialize — {"name":"open-probe","version":"1.0.0"}
+PASS tools/list 非空 — ["open_probe"]
+PASS tools/call 返回内容 — {"ok":true,"probe":"open-plugin","ts":"2026-11-08T11:47:33.188Z"}
+SMOKE: PASS (3/3)

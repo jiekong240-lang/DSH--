@@ -1,0 +1,13 @@
+=== N1-S0 baseline 2026/11/08 ���� 19:45:41.17 === 
+    "@deepseek-ai/dsh": "0.2.1-rc.2",
+0.2.1-rc.2
+OpenDesign 上游锚点 commit: c722773f2eac5b259f0411861732770af44368f7 (2026-10-20T03:25:55Z)
+DSH 版本: 0.2.1-rc.2
+模式: CHECK（只报告，不改动）
+
+[gate-grant] RETIRED — MIGRATED into plugin source (v1.1.0-dsh)(不再检查/不再 reapply)
+[brief-autoconfirm] --check -> CLEAN
+[status-timing] --check -> CLEAN
+[runtime] --check -> OK
+
+完成。无异常。

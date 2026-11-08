@@ -1,0 +1,6 @@
+[srv] [mod-echo] started (mod-echo v1.0.0, protocol fallback=2025-06-18)
+[srv] [mod-echo] initialize: client=2024-11-05 → negotiated=2024-11-05
+PASS initialize — {"name":"mod-echo","version":"1.0.0"}
+PASS tools/list 非空 — ["mod_echo"]
+PASS tools/call 返回内容 — {"ok":true,"echo":"","mod":"mod-echo"}
+SMOKE: PASS (3/3)

@@ -1,0 +1,8 @@
+{
+  "name": "dsh-plugin-template-open-mod",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "engines": { "dsh": "0.2.x" },
+  "description": "薄插件改装模板:复制 plugins/_template-open-mod → plugins/<name>/ 改名即开工。engines.dsh 匹配主线大版本;禁止 allow-version 绕过。"
+}
