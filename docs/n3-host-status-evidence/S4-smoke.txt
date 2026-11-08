@@ -1,0 +1,6 @@
+[srv] [host-status] started (host-status v1.0.0, protocol fallback=2025-06-18)
+[srv] [host-status] initialize: client=2024-11-05 → negotiated=2024-11-05
+PASS initialize — {"name":"host-status","version":"1.0.0"}
+PASS tools/list 非空 — ["host_status"]
+PASS tools/call 返回内容 — {"ok":true,"mod":"host-status","sandboxExists":true,"dshPinned":"0.2.1-rc.2","ports":{"3080":"up","3
+SMOKE: PASS (3/3)
