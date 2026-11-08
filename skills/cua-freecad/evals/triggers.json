@@ -1,0 +1,21 @@
+{
+  "skill": "cua-freecad",
+  "test_cases": [
+    {
+      "input": "make a high-quality parametric box in FreeCAD",
+      "should_trigger": true
+    },
+    {
+      "input": "export STEP and validate geometry",
+      "should_trigger": true
+    },
+    {
+      "input": "denture base plate with thickness control",
+      "should_trigger": true
+    },
+    {
+      "input": "just chat about the weather",
+      "should_trigger": false
+    }
+  ]
+}
