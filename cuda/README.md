@@ -1,6 +1,6 @@
-# CUDA 加速层
+# CUDA 加速层（工业级建模）
 
-工业级建模重计算（粒子相互作用、高精度点云、几何）在本地 GPU 上执行。
+本地 GPU 执行重计算：粒子相互作用、参数化几何、高精度点云。
 
 ## 依赖
 
@@ -8,17 +8,18 @@
 pip install -r cuda/requirements.txt
 ```
 
-需要 NVIDIA 驱动 + CUDA Toolkit（RTX 5070 笔记本已满足）。
+需要 NVIDIA 驱动 + CUDA Toolkit。RTX 5070 笔记本已满足。
 
-## 用法
+## 模式
 
-Node 服务会自动调用 `python cuda/particle_sim.py`。
+- `generate`：参数化塔 / 球体点云
+- `section`：截面点云（xy/xz/yz）
+- `step`：粒子更新（目标吸引 + 阻尼 + 粒子排斥堆积）
 
-无 CUDA / CuPy 时自动回退到 NumPy，不影响运行。
+无 CUDA 时自动回退 NumPy。
 
-## 当前能力
+## Node 接口
 
-- `generate`：GPU 生成塔/球体点云
-- `step`：GPU 粒子位置更新（目标吸引 + 阻尼）
-
-后续可扩展：粒子碰撞、布尔运算、参数化网格。
+- `POST /api/cuda/generate`  `{shape, n}`
+- `POST /api/cuda/section`   `{shape, plane, offset, n}`
+- `POST /api/cuda/step`      状态 JSON
