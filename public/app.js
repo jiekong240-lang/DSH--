@@ -3,7 +3,7 @@
  * Three.js WebGL + 自定义 Shader
  * 对话识别主题 → CUDA 生成高精度点云 → 粒子流动堆积成形
  * 工程取舍：CUDA 优先 + 本地回退、类型数组、GPU 渲染
- * 色调：白底 + 白灰粒子
+ * 色调：白底 + 高对比灰色粒子（科技感，形状可辨）
  * ============================================================ */
 import * as THREE from 'three';
 
@@ -13,7 +13,7 @@ const CONFIG = {
   ACTIVITY_BOOST: 0.06,
   DAMPING: 0.97,
   SETTLE_DAMPING: 0.88,
-  POINT_SIZE: 2.4,
+  POINT_SIZE: 3.2,
 };
 
 const canvas = document.getElementById('scene');
@@ -122,7 +122,7 @@ function init() {
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0xffffff, 1); // 白底
+  renderer.setClearColor(0xf7f7f8, 1); // 略浅的冷白底，提高对比
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -149,7 +149,7 @@ function createParticles() {
     velocities[i3] = (Math.random() - 0.5) * 0.015;
     velocities[i3 + 1] = (Math.random() - 0.5) * 0.015;
     velocities[i3 + 2] = (Math.random() - 0.5) * 0.008;
-    sizes[i] = 0.5 + Math.random() * 1.6;
+    sizes[i] = 0.8 + Math.random() * 2.2;
     phases[i] = Math.random() * Math.PI * 2;
   }
 
@@ -175,10 +175,10 @@ function createParticles() {
 
       void main() {
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        float size = aSize * (1.0 + uActivity * 1.4);
-        gl_PointSize = size * uPixelRatio * (200.0 / -mvPosition.z);
+        float size = aSize * (1.15 + uActivity * 1.6);
+        gl_PointSize = size * uPixelRatio * (240.0 / -mvPosition.z);
         gl_Position = projectionMatrix * mvPosition;
-        vAlpha = 0.45 + uActivity * 0.35 + sin(uTime * 1.1 + aPhase) * 0.08;
+        vAlpha = 0.62 + uActivity * 0.28 + sin(uTime * 0.9 + aPhase) * 0.06;
         vActivity = uActivity;
       }
     `,
@@ -189,15 +189,15 @@ function createParticles() {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float d = length(uv);
         if (d > 0.5) discard;
-        float soft = smoothstep(0.5, 0.15, d);
-        // 白灰调：从浅灰到中灰，活跃时稍深
-        vec3 color = mix(vec3(0.72, 0.72, 0.74), vec3(0.38, 0.38, 0.40), vActivity);
+        float soft = smoothstep(0.48, 0.08, d);
+        // 高对比灰：浅灰边缘 → 深灰核心，形状更清晰
+        vec3 color = mix(vec3(0.55, 0.56, 0.58), vec3(0.18, 0.19, 0.21), vActivity);
         gl_FragColor = vec4(color, soft * vAlpha);
       }
     `,
     transparent: true,
     depthWrite: false,
-    blending: THREE.NormalBlending, // 白底下用正常混合
+    blending: THREE.NormalBlending,
   });
 
   points = new THREE.Points(geometry, material);
