@@ -63,6 +63,8 @@ cua/                  # CUA 本体（主线）
 docs/
   CUA_ARCHITECTURE.md # 详细架构与约束
   CUA_PROGRESS.md     # 进展日志（可追溯）
+  papers/             # 「真能干活」文献归档（范围说明 + INDEX + 批次）
+  references/         # 精选前沿论文与 CUA 模块映射
 sentinel/             # 现有哨兵（支持）
 server.js             # 监控服务（支持）
 public/               # 大屏前端（支持）
@@ -75,6 +77,10 @@ logs/                 # 运行时审计（cua-audit.jsonl）
 - 查看审计：`logs/cua-audit.jsonl`
 - 对照进展：`docs/CUA_PROGRESS.md`
 - 架构说明：`docs/CUA_ARCHITECTURE.md`
+
+### 学术文献归档
+
+支撑「真能干活」的论文与工程资料统一放在 [`docs/papers/`](docs/papers/README.md)（含技术范围说明与 INDEX）。精选模块映射见 [`docs/references/CUA_FRONTIER_REFERENCES.md`](docs/references/CUA_FRONTIER_REFERENCES.md)。
 
 ## 下一步（优先级）
 
