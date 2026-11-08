@@ -1,0 +1,20 @@
+{
+  "skill": "particle-cuda",
+  "test_cases": [
+    {
+      "name": "prefer_cuda_generate",
+      "input": "Generate tower points for JARVIS",
+      "assertions": ["calls /api/cuda/generate", "reports cuda flag", "falls back if unavailable"]
+    },
+    {
+      "name": "adaptive_cap",
+      "input": "Request 100000 particles",
+      "assertions": ["applies adaptive_cap", "does not exceed VRAM-based limit"]
+    },
+    {
+      "name": "device_info",
+      "input": "Check if CUDA is active",
+      "assertions": ["returns device info with cuda boolean", "includes vram when available"]
+    }
+  ]
+}
