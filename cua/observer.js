@@ -6,13 +6,13 @@
  * 屏幕截图 + 视觉理解接口（截图本地完成，视觉理解走 API）
  * 混合观察：截图 + 窗口枚举 + 可访问性浅层树
  * 
- * TRACE 2026-11-08: 多屏支持（VirtualScreen），提升家用机多显示器场景观察质量
- * 参考 OSWorld / HCU 观察协议 + 截图陈旧研究
+ * TRACE 2026-11-08: 多屏支持 + 状态一致性辅助 + 视觉 API 载荷准备
+ * 参考 OSWorld / HCU 观察协议 + 截图陈旧研究 (2610.39282)
  */
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { getAccessibilityTree } = require('./accessibility');
+const { getAccessibilityTree, findElementsByName, getClickableElements } = require('./accessibility');
 
 function runPowerShell(command) {
   return new Promise((resolve) => {
@@ -118,4 +118,51 @@ async function observe(options = {}) {
   };
 }
 
-module.exports = { observe, enumerateWindows, takeScreenshot };
+/**
+ * 简单状态一致性对比（点击前/后）
+ * 检查焦点元素是否变化、截图是否产生
+ * 参考：截图陈旧导致点击失效
+ */
+function compareObservations(before, after) {
+  if (!before || !after) return { changed: false, note: 'missing observation' };
+  const focusBefore = before.focus && before.focus.Name;
+  const focusAfter = after.focus && after.focus.Name;
+  const focusChanged = focusBefore !== focusAfter;
+  const hasNewShot = !!(after.screenshot && after.screenshot !== before.screenshot);
+  return {
+    changed: focusChanged || hasNewShot,
+    focusChanged,
+    hasNewShot,
+    beforeFocus: focusBefore || null,
+    afterFocus: focusAfter || null,
+    note: focusChanged ? 'focus changed' : (hasNewShot ? 'screenshot refreshed' : 'no obvious change'),
+  };
+}
+
+/**
+ * 准备给外部视觉/规划 API 的载荷
+ * 不直接调用，供调用方使用（截图路径 + AX 摘要）
+ */
+function prepareVisionPayload(observation, extra = {}) {
+  return {
+    ts: observation.ts,
+    screenshot: observation.screenshot || null,
+    screenshotError: observation.screenshotError || null,
+    focus: observation.focus || null,
+    accessibilitySummary: observation.accessibility && observation.accessibility.note,
+    windowsCount: (observation.windows || []).length,
+    channels: observation.channels || {},
+    ...extra,
+  };
+}
+
+module.exports = {
+  observe,
+  enumerateWindows,
+  takeScreenshot,
+  compareObservations,
+  prepareVisionPayload,
+  // 重新导出便于上层直接使用
+  findElementsByName,
+  getClickableElements,
+};
