@@ -1,8 +1,8 @@
 /* ============================================================
  * 贾维斯 · GPU 粒子系统 + 流沙式形状成形
  * Three.js WebGL + 自定义 Shader
- * 对话识别主题 → 生成目标点云 → 粒子流动堆积成形
- * 工程取舍：类型数组、预分配目标、阻尼沉降、GPU 渲染
+ * 对话识别主题 → CUDA 生成高精度点云 → 粒子流动堆积成形
+ * 工程取舍：CUDA 优先 + 本地回退、类型数组、GPU 渲染
  * ============================================================ */
 import * as THREE from 'three';
 
@@ -29,8 +29,8 @@ let targetAssignments = null;
 let renderer, scene, camera, points, geometry, material;
 let positions, velocities;
 
-/* ---------- 形状点云生成 ---------- */
-function generateTower(n = 1800) {
+/* ---------- 本地回退形状生成 ---------- */
+function generateTowerLocal(n = 1800) {
   const pts = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
     const t = i / n;
@@ -45,7 +45,7 @@ function generateTower(n = 1800) {
   return pts;
 }
 
-function generateSphere(n = 1600) {
+function generateSphereLocal(n = 1600) {
   const pts = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
     const phi = Math.acos(2 * Math.random() - 1);
@@ -58,26 +58,57 @@ function generateSphere(n = 1600) {
   return pts;
 }
 
-const SHAPES = {
-  tower: generateTower,
-  sphere: generateSphere,
-};
+async function fetchCudaPoints(shape) {
+  try {
+    const r = await fetch('/api/cuda/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shape, n: shape === 'tower' ? 2200 : 1800 }),
+    });
+    const data = await r.json();
+    if (data.ok && Array.isArray(data.points) && data.points.length > 0) {
+      const flat = new Float32Array(data.points.length * 3);
+      for (let i = 0; i < data.points.length; i++) {
+        flat[i * 3] = data.points[i][0];
+        flat[i * 3 + 1] = data.points[i][1];
+        flat[i * 3 + 2] = data.points[i][2];
+      }
+      return { points: flat, cuda: !!data.cuda };
+    }
+  } catch { /* ignore */ }
+  return null;
+}
 
-function setShape(name) {
-  if (!name || !SHAPES[name]) {
+async function setShape(name) {
+  if (!name) {
     currentShape = null;
     targetPoints = null;
     targetAssignments = null;
     return;
   }
+
   currentShape = name;
-  targetPoints = SHAPES[name]();
-  const tn = targetPoints.length / 3;
+  statusEl.textContent = 'CUDA 生成中…';
+
+  const cudaResult = await fetchCudaPoints(name);
+  let pts;
+  let usedCuda = false;
+
+  if (cudaResult) {
+    pts = cudaResult.points;
+    usedCuda = cudaResult.cuda;
+  } else {
+    pts = name === 'tower' ? generateTowerLocal() : generateSphereLocal();
+  }
+
+  targetPoints = pts;
+  const tn = pts.length / 3;
   targetAssignments = new Uint16Array(CONFIG.PARTICLE_COUNT);
   for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
     targetAssignments[i] = Math.floor(Math.random() * tn);
   }
   activity = 1.0;
+  statusEl.textContent = usedCuda ? 'CUDA 就绪' : '本地回退';
 }
 
 /* ---------- Three.js 初始化 ---------- */
@@ -263,7 +294,7 @@ async function send(text) {
     });
     const data = await r.json();
     addMsg('jarvis', data.reply || '（无回复）');
-    if (data.shape) setShape(data.shape);
+    if (data.shape) await setShape(data.shape);
   } catch (e) {
     addMsg('jarvis', '连接失败：' + (e.message || String(e)));
   }
@@ -276,6 +307,6 @@ form.addEventListener('submit', (e) => {
   send(input.value);
 });
 
-addMsg('jarvis', '我是贾维斯。聊到哈里发塔或球体时，粒子会像流沙一样堆出形状。');
+addMsg('jarvis', '我是贾维斯。聊到哈里发塔或球体时，会优先用 CUDA 生成点云并堆积。');
 
 init();
