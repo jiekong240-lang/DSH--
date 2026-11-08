@@ -6,6 +6,7 @@
  * Supervisor / Guardian 闭环与人工批准通道
  * 
  * TRACE 2026-11-08: 成功运行后触发经验学习（API 总结）
+ * TRACE 2026-11-08+: 审计包含 verification（compareObservations 结果）
  */
 const fs = require('fs');
 const path = require('path');
@@ -57,6 +58,7 @@ async function supervise(ctx) {
     task: ctx.task && ctx.task.id,
     step: ctx.decision && ctx.decision.step,
     resultOk,
+    verification: ctx.verification || null,
     note: 'supervise cycle',
   };
   console.log('[CUA supervisor]', record);
@@ -80,6 +82,7 @@ async function supervise(ctx) {
       steps: ctx.task.steps,
       result: ctx.result,
       observationSummary: ctx.verified && ctx.verified.note,
+      verification: ctx.verification,
     };
     // 非阻塞，失败不影响主流程
     onSuccessfulRun(trace).catch((e) => {

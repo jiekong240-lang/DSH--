@@ -6,6 +6,7 @@
  * 通过 UI Automation 获取窗口元素信息（混合观察通道）
  * 
  * TRACE 2026-11-08: 添加按名称搜索、可点击元素提取、更好的错误处理
+ * TRACE 2026-11-08+: 添加 BoundingRectangle 解析器，供名称点击坐标推断
  * 参考 HCU：语义通道补充视觉，减少失效点击；对齐进度日志优先项 1
  */
 const { execFile } = require('child_process');
@@ -116,10 +117,6 @@ async function findElementsByName(namePattern, maxResults = 8) {
       Add-Type -AssemblyName UIAutomationClient
       $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
       if (-not $focused) { exit }
-      $condition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, '*${safe}*'
-      )
-      # 简单深度有限的搜索（避免过深）
       $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
       $matches = @()
       function Search($el, $depth) {
@@ -180,9 +177,38 @@ async function getClickableElements(max = 10) {
   };
 }
 
+/**
+ * 解析 BoundingRectangle 字符串为坐标与中心点
+ * 支持常见格式："X=100,Y=200,Width=50,Height=30" 或 "{X=100, Y=200, Width=50, Height=30}"
+ * 返回 { x, y, width, height, centerX, centerY } 或 null
+ */
+function parseBoundingRectangle(rectStr) {
+  if (!rectStr || typeof rectStr !== 'string') return null;
+  const cleaned = rectStr.replace(/[{}]/g, '').replace(/\s+/g, '');
+  const parts = {};
+  for (const pair of cleaned.split(',')) {
+    const [k, v] = pair.split('=');
+    if (k && v) parts[k.trim().toLowerCase()] = parseFloat(v);
+  }
+  const x = parts.x;
+  const y = parts.y;
+  const w = parts.width;
+  const h = parts.height;
+  if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) return null;
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(w),
+    height: Math.round(h),
+    centerX: Math.round(x + w / 2),
+    centerY: Math.round(y + h / 2),
+  };
+}
+
 module.exports = {
   getAccessibilityTree,
   getFocusedWindowInfo,
   findElementsByName,
   getClickableElements,
+  parseBoundingRectangle,
 };
