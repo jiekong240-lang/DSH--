@@ -1,0 +1,21 @@
+{
+  "skill": "particle-cuda",
+  "test_cases": [
+    {
+      "input": "use CUDA to generate particle shape",
+      "should_trigger": true
+    },
+    {
+      "input": "check if particle system has GPU acceleration",
+      "should_trigger": true
+    },
+    {
+      "input": "fallback when no CuPy",
+      "should_trigger": true
+    },
+    {
+      "input": "edit FreeCAD sketch constraints",
+      "should_trigger": false
+    }
+  ]
+}
