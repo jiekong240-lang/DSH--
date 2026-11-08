@@ -1,0 +1,20 @@
+{
+  "skill": "jarvis-particles",
+  "test_cases": [
+    {
+      "name": "prefer_cuda",
+      "input": "Generate tower shape with particles",
+      "assertions": ["calls /api/cuda/generate", "uses CUDA points when available", "shows CUDA status"]
+    },
+    {
+      "name": "fallback",
+      "input": "Generate shape when CUDA is unavailable",
+      "assertions": ["falls back to generateTowerLocal or generateSphereLocal", "still produces particles"]
+    },
+    {
+      "name": "adaptive_cap",
+      "input": "Request large particle count on limited VRAM",
+      "assertions": ["respects adaptive_cap in particle_sim.py", "does not exceed safe limit"]
+    }
+  ]
+}
