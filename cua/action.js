@@ -1,14 +1,16 @@
 'use strict';
 /**
  * 动作执行器
- * 
+ *
  * CORE - 首要核心，勿删除
- * 精确鼠标/键盘控制（SendInput / mouse_event 级别）
- * 
+ * 精确鼠标/键盘控制 + agent-desktop Accessibility Tree 通道
+ *
  * TRACE 2026-11-08: 可选习惯记录集成 + 更清晰返回
+ * TRACE 2026-11-08+: agent-desktop 作为核心操作通道接入
  */
 const { execFile } = require('child_process');
 const { recordHabit, isEnabled: habitsEnabled } = require('./habits');
+const agentDesktop = require('./agent-desktop-tool');
 
 function runPowerShell(command) {
   return new Promise((resolve) => {
@@ -96,6 +98,13 @@ async function execute(decision) {
 
   const action = String(step.action).toLowerCase();
 
+  // agent-desktop 核心通道优先
+  if (action.startsWith('ad-') || action === 'snapshot' || action === 'click-ref' || action === 'type-ref' || action === 'press') {
+    const r = await agentDesktop.executeStep(step);
+    if (r.ok) maybeRecord('agent-desktop', action, { ref: step.ref || step.target });
+    return { ok: r.ok, action, note: 'agent-desktop', error: r.error, stdout: r.stdout };
+  }
+
   try {
     if (action === 'mousemove' || action === 'move') {
       const r = await mouseMove(step.x, step.y);
@@ -123,4 +132,4 @@ async function execute(decision) {
   }
 }
 
-module.exports = { execute, mouseMove, mouseClick, typeText };
+module.exports = { execute, mouseMove, mouseClick, typeText, agentDesktop };
