@@ -4,14 +4,14 @@
  * 
  * CORE - 首要核心，勿删除
  * 屏幕截图 + 视觉理解接口（截图本地完成，视觉理解走 API）
+ * 混合观察：截图 + 窗口枚举 + 可访问性浅层树
  * 
- * TRACE 2026-11-08: 提升质量
- * - 更稳定的截图（错误处理 + 文件存在检查）
- * - 窗口枚举健壮性
+ * TRACE 2026-11-08: 接入 accessibility 浅层树，形成 HCU 风格混合观察
  */
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { getAccessibilityTree } = require('./accessibility');
 
 function runPowerShell(command) {
   return new Promise((resolve) => {
@@ -77,9 +77,18 @@ async function takeScreenshot() {
   return { path: null, error: r.error || 'screenshot failed' };
 }
 
-async function observe() {
-  const windows = await enumerateWindows();
-  const shot = await takeScreenshot();
+/**
+ * 混合观察：截图 + 窗口 + AX 浅层树
+ * 供外部 API 大脑同时获得视觉与语义通道
+ */
+async function observe(options = {}) {
+  const includeAx = options.includeAx !== false;
+  const [windows, shot, ax] = await Promise.all([
+    enumerateWindows(),
+    takeScreenshot(),
+    includeAx ? getAccessibilityTree(options.maxAxChildren || 12) : Promise.resolve(null),
+  ]);
+
   return {
     ts: Date.now(),
     screenshot: shot.path,
@@ -89,8 +98,14 @@ async function observe() {
       pid: w.Id,
       title: w.MainWindowTitle,
     })),
-    focus: null,
-    note: `observer: ${windows.length} windows, screenshot=${!!shot.path}`,
+    accessibility: ax,
+    focus: ax && ax.focused ? ax.focused : null,
+    note: `observer: ${windows.length} windows, screenshot=${!!shot.path}, ax=${!!(ax && ax.focused)}`,
+    channels: {
+      visual: !!shot.path,
+      semantic: !!(ax && ax.focused),
+      programmatic: true,
+    },
   };
 }
 
