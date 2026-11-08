@@ -1,10 +1,13 @@
 'use strict';
 /**
- * FreeCAD high-quality CAD tool (thickened)
+ * FreeCAD tool — quality-first
  *
- * Local FreeCAD 1.1.4 via freecadcmd.
- * Provides parametric creation, Sketcher/PartDesign helpers,
- * STEP export with geometric validation, and denture-oriented utilities.
+ * Design principles:
+ * - Structured result (never rely on string matching alone)
+ * - Geometric validity checks (volume, isValid, solid count)
+ * - Explicit failure reasons
+ * - Temporary scripts cleaned up on success
+ * - Compatible with CUA verification loop
  */
 const { execFile } = require('child_process');
 const path = require('path');
@@ -17,151 +20,150 @@ function ensureLogDir() {
   if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
-function runFreeCAD(scriptContent, timeout = 180000) {
+function runFreeCADScript(scriptContent, timeoutMs = 180000) {
   return new Promise((resolve) => {
     if (!fs.existsSync(FREECAD_CMD)) {
-      return resolve({ ok: false, error: 'freecadcmd not found', path: FREECAD_CMD });
+      return resolve({
+        ok: false,
+        error: 'freecadcmd_not_found',
+        detail: FREECAD_CMD,
+      });
     }
+
     ensureLogDir();
-    const tmp = path.join(LOG_DIR, `fc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.py`);
+    const scriptPath = path.join(LOG_DIR, `fc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.py`);
+
     try {
-      fs.writeFileSync(tmp, scriptContent, 'utf8');
+      fs.writeFileSync(scriptPath, scriptContent, 'utf8');
     } catch (e) {
-      return resolve({ ok: false, error: 'write script failed: ' + e.message });
+      return resolve({ ok: false, error: 'script_write_failed', detail: e.message });
     }
 
     execFile(
       FREECAD_CMD,
-      [tmp],
-      { timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+      [scriptPath],
+      { timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
       (err, stdout, stderr) => {
-        const out = String(stdout || '').trim();
-        const errOut = String(stderr || '').trim();
-        resolve({
-          ok: !err && !out.includes('Exception') && !out.includes('Error'),
-          stdout: out,
-          stderr: errOut,
-          error: err ? String(err.message || err).slice(0, 600) : null,
-          script: tmp,
-        });
+        const out = String(stdout || '');
+        const errOut = String(stderr || '');
+
+        let metrics = null;
+        try {
+          const m = out.match(/__METRICS__\s*(\{.*?\})\s*__END__/s);
+          if (m) metrics = JSON.parse(m[1]);
+        } catch { /* ignore parse error */ }
+
+        const result = {
+          ok: !err && metrics && metrics.ok === true,
+          error: err ? 'process_error' : (metrics && metrics.ok === false ? metrics.reason : null),
+          detail: err ? String(err.message || err).slice(0, 400) : (metrics && metrics.reason),
+          metrics,
+          stdout: out.trim().slice(0, 2000),
+          stderr: errOut.trim().slice(0, 1000),
+          scriptPath,
+        };
+
+        if (result.ok) {
+          try { fs.unlinkSync(scriptPath); } catch { /* ignore */ }
+        }
+
+        resolve(result);
       }
     );
   });
 }
 
-function parseMetrics(stdout) {
-  const vol = (stdout.match(/VOLUME:\s*([\d.eE+-]+)/) || [])[1];
-  const faces = (stdout.match(/FACES:\s*(\d+)/) || [])[1];
-  const ok = stdout.includes('OK');
-  return {
-    volume: vol ? Number(vol) : null,
-    faces: faces ? Number(faces) : null,
-    okFlag: ok,
-  };
-}
-
 const freecadTool = {
   name: 'freecad',
-  description: 'High-quality parametric CAD via local FreeCAD 1.1.4',
+  description: 'Quality-first FreeCAD parametric CAD (structured validation)',
 
-  async runScript(scriptPathOrContent) {
-    if (!scriptPathOrContent) return { ok: false, error: 'script required' };
-    let content = scriptPathOrContent;
-    if (fs.existsSync(scriptPathOrContent)) {
-      content = fs.readFileSync(scriptPathOrContent, 'utf8');
-    }
-    const r = await runFreeCAD(content);
-    return { ...r, metrics: parseMetrics(r.stdout) };
-  },
-
-  async createVerifiedBox(length = 50, width = 30, height = 20, outPath) {
+  async createVerifiedBox({ length = 50, width = 30, height = 20, outPath } = {}) {
     const expected = length * width * height;
     const script = `
 import FreeCAD as App
 import Part
-doc = App.newDocument("hq_box")
+import json
+
+doc = App.newDocument("hq")
 box = doc.addObject("Part::Box", "Box")
-box.Length = float(${length})
-box.Width = float(${width})
-box.Height = float(${height})
+box.Length = ${length}
+box.Width = ${width}
+box.Height = ${height}
 doc.recompute()
-vol = box.Shape.Volume
-faces = len(box.Shape.Faces)
-print("VOLUME:", vol)
-print("FACES:", faces)
-if abs(vol - ${expected}) > 0.05:
-    raise Exception(f"volume mismatch: got {vol}, expected ${expected}")
-${outPath ? `doc.saveAs(r"${outPath.replace(/\\/g, '\\\\')}")` : ''}
-print("OK")
+
+shape = box.Shape
+vol = shape.Volume
+valid = shape.isValid()
+solids = len(shape.Solids)
+
+ok = valid and solids == 1 and abs(vol - ${expected}) < 0.05
+reason = None
+if not valid: reason = "shape_invalid"
+elif solids != 1: reason = f"solid_count_{solids}"
+elif abs(vol - ${expected}) >= 0.05: reason = f"volume_{vol}_expected_${expected}"
+
+${outPath ? `if ok: doc.saveAs(r"${outPath.replace(/\\/g, '\\\\')}")` : ''}
+
+print("__METRICS__")
+print(json.dumps({
+  "ok": ok,
+  "reason": reason,
+  "volume": vol,
+  "expected": ${expected},
+  "valid": valid,
+  "solids": solids,
+  "faces": len(shape.Faces),
+}))
+print("__END__")
 `;
-    const r = await runFreeCAD(script);
-    return { ...r, metrics: parseMetrics(r.stdout), expectedVolume: expected };
+    return runFreeCADScript(script);
   },
 
-  async exportStep(fcstdPath, outPath) {
-    if (!fcstdPath || !outPath) return { ok: false, error: 'fcstdPath and outPath required' };
+  async exportStep({ fcstdPath, outPath }) {
+    if (!fcstdPath || !outPath) {
+      return { ok: false, error: 'missing_path' };
+    }
     const script = `
 import FreeCAD as App
 import Part
+import json
 import os
+
 doc = App.openDocument(r"${fcstdPath.replace(/\\/g, '\\\\')}")
 doc.recompute()
-solids = [o for o in doc.Objects if hasattr(o, "Shape") and o.Shape.Solids]
-if not solids:
-    raise Exception("no solid objects found")
-obj = solids[0]
+
+candidates = [o for o in doc.Objects if hasattr(o, "Shape") and o.Shape.Solids]
+if not candidates:
+    print("__METRICS__")
+    print(json.dumps({"ok": False, "reason": "no_solid"}))
+    print("__END__")
+    raise SystemExit(1)
+
+obj = candidates[0]
 shape = obj.Shape
 vol = shape.Volume
-faces = len(shape.Faces)
-edges = len(shape.Edges)
-print("VOLUME:", vol)
-print("FACES:", faces)
-print("EDGES:", edges)
-if vol <= 1e-6:
-    raise Exception("invalid or zero volume")
-if not shape.isValid():
-    raise Exception("shape is not valid")
-shape.exportStep(r"${outPath.replace(/\\/g, '\\\\')}")
-if not os.path.exists(r"${outPath.replace(/\\/g, '\\\\')}"):
-    raise Exception("STEP file not written")
-print("STEP_EXPORTED")
-print("OK")
-`;
-    const r = await runFreeCAD(script);
-    return { ...r, metrics: parseMetrics(r.stdout) };
-  },
+valid = shape.isValid()
 
-  async createDentureBase(params = {}) {
-    const length = params.length || 60;
-    const width = params.width || 40;
-    const thickness = params.thickness || 3.0;
-    const outPath = params.outPath;
-    const script = `
-import FreeCAD as App
-import Part
-doc = App.newDocument("DentureBase")
-outer = doc.addObject("Part::Box", "Outer")
-outer.Length = ${length}
-outer.Width = ${width}
-outer.Height = ${thickness}
-inner = doc.addObject("Part::Box", "Inner")
-inner.Length = ${length - 16}
-inner.Width = ${width - 20}
-inner.Height = ${thickness + 2}
-inner.Placement.Base = App.Vector(8, 10, -1)
-cut = doc.addObject("Part::Cut", "DentureBase")
-cut.Base = outer
-cut.Tool = inner
-doc.recompute()
-vol = cut.Shape.Volume
-print("VOLUME:", vol)
-if vol <= 0:
-    raise Exception("denture base volume invalid")
-${outPath ? `doc.saveAs(r"${outPath.replace(/\\/g, '\\\\')}")` : ''}
-print("OK")
+ok = valid and vol > 1e-3
+reason = None if ok else ("invalid" if not valid else "zero_volume")
+
+if ok:
+    shape.exportStep(r"${outPath.replace(/\\/g, '\\\\')}")
+    ok = os.path.exists(r"${outPath.replace(/\\/g, '\\\\')}")
+    if not ok: reason = "step_not_written"
+
+print("__METRICS__")
+print(json.dumps({
+  "ok": ok,
+  "reason": reason,
+  "volume": vol,
+  "valid": valid,
+  "solids": len(shape.Solids),
+  "faces": len(shape.Faces),
+}))
+print("__END__")
 `;
-    const r = await runFreeCAD(script);
-    return { ...r, metrics: parseMetrics(r.stdout) };
+    return runFreeCADScript(script);
   },
 };
 
