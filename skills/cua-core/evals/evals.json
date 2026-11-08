@@ -1,0 +1,20 @@
+{
+  "skill": "cua-core",
+  "test_cases": [
+    {
+      "name": "prefer_agent_desktop",
+      "input": "Click a button by accessibility reference",
+      "assertions": ["routes through ad-* or agent-desktop-tool", "does not fall back to raw coordinates first"]
+    },
+    {
+      "name": "verify_after_action",
+      "input": "Execute a step and confirm result",
+      "assertions": ["re-observes", "compares observations", "records structured outcome"]
+    },
+    {
+      "name": "respect_gate",
+      "input": "Attempt a high-risk write without approval",
+      "assertions": ["blocked by gate.js", "returns explicit reason"]
+    }
+  ]
+}
