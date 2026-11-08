@@ -1,0 +1,66 @@
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-plugin-claim-gate\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-plugin-write-verify-dsh\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-plugin-arch-gate\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-plugin-team-roles\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-plugin-team-model-router\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-plugin-team-budget\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-plugin-tool-watch\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-plugin-memory-dsh\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+(node:9720) [DEP0151] DeprecationWarning: No "main" or "exports" field defined in the package.json for C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\node_modules\dsh-local-task-budget\ resolving the main entry point "index.js", imported from C:\Users\64562\WorkBuddy\2026-10-12-13-09-47\dsh-sandbox-rc1\dsh-home\profiles\headless\.
+Default "index" lookups for the main are deprecated for ES modules.
+[warmup] skip (OLLAMA_UNAVAILABLE:unreachable)
+[localkb] 启动 pid=15800，索引范围 2 个目录，等待握手…
+[repomap] 启动 pid=6016，cwd=C:\Users\64562\WorkBuddy\dsh-data\mcp\repomap，等待握手…
+[desktop-bridge] 就绪。只透传前缀 desktop_semantic_ 与名单 desktop_perceive, desktop_verify_state；confirm-write=true
+[desktop-bridge] 启动上游 nuphus（来源: blessed:C:\Users\64562\WorkBuddy\nuphus\nuphus-mcp.exe）: C:\Users\64562\WorkBuddy\nuphus\nuphus-mcp.exe  --confirm-write
+[budget] started (model-budget v1.1.0, protocol fallback=2025-06-18)
+[budget] initialize: client=2025-11-25 → negotiated=2025-11-25
+[playbooks] started (cua-playbooks v1.0.0, protocol fallback=2025-06-18)
+[playbooks] initialize: client=2025-11-25 → negotiated=2025-11-25
+[delegate] started (coding-delegate v1.1.0, protocol fallback=2025-06-18)
+[delegate] initialize: client=2025-11-25 → negotiated=2025-11-25
+[dsh-status] started (dsh-status v1.0.0, protocol fallback=2025-06-18)
+[dsh-status] initialize: client=2025-11-25 → negotiated=2025-11-25
+[desktop-bridge] upstream stderr: [2m2026-11-08T11:07:45.205261Z[0m [33m WARN[0m [2mnuphus_mcp[0m[2m:[0m [nuphus-mcp] STRICT CONFIRM MODE: write tools require "confirm": true
+[desktop-bridge] 上游握手完成
+[imagegen] started (imagegen v2.0.0, protocol fallback=2025-06-18)
+[desktop-bridge] tools/list：透传 6 个，屏蔽 39 个（非白名单：semantic_*/perceive/verify_state 之外）
+[imagegen] initialize: client=2025-11-25 → negotiated=2025-11-25
+[comfy] started (comfy v1.0.0, protocol fallback=2025-06-18)
+[comfy] initialize: client=2025-11-25 → negotiated=2025-11-25
+[vision] started (vision v1.0.0, protocol fallback=2025-06-18)
+[vision] initialize: client=2025-11-25 → negotiated=2025-11-25
+[drama] started (drama v0.1.0, protocol fallback=2025-06-18)
+[drama] initialize: client=2025-11-25 → negotiated=2025-11-25
+[memory] started (memory v1.0.0, protocol fallback=2025-06-18)
+[memory] initialize: client=2025-11-25 → negotiated=2025-11-25
+[localkb] 索引完成：468 文件 / 51856 行 / 59301 词元，耗时 276 ms，跳过 1 文件
+{"type":"session","sessionId":"session-bdaeace3-5e45-44b7-b85d-7222dcb9ca43","cwd":"C:\\Users\\64562\\WorkBuddy\\2026-10-12-13-09-47\\dsh-sandbox-rc1"}
+{"type":"status","phase":"turn_start","turn":1}
+{"type":"status","phase":"step_start","turn":1,"step":1}
+{"type":"thinking","text":"The user wants me to reply with exactly one word: \"OK\". This is a very simple request that doesn't require any of the available tools or skills. I just need to output the word \"OK\" as requested.\n\nLet me check if there's any context I need to consider. The user's message is just \"Reply with exactly one word: OK\". There's no complex task here.\n\nI should just respond with \"OK\" and nothing else."}
+{"type":"text","text":"OK"}
+{"type":"status","phase":"step_end","turn":1,"step":1,"usage":{"inputTokens":56937,"outputTokens":95,"totalTokens":57032}}
+{"type":"status","phase":"turn_end","turn":1,"reason":{"kind":"completed"}}
+{"type":"final","sessionId":"session-bdaeace3-5e45-44b7-b85d-7222dcb9ca43","reason":{"kind":"completed"},"text":"OK"}
+[desktop-bridge] stdin 关闭，退出
+[comfy] stdin closed, exit
+[drama] stdin closed, exit
+[dsh-status] stdin closed, exit
+[repomap] stdin 关闭，退出。本次共处理 0 次调用。
+[playbooks] stdin closed, exit
+[budget] stdin closed, exit
+[vision] stdin closed, exit
+[imagegen] stdin closed, exit
+[memory] stdin closed, exit
+[delegate] stdin closed, exit
+[localkb] stdin 关闭，退出。本次共处理 0 次查询。

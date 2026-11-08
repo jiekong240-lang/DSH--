@@ -1,0 +1,19 @@
+{
+  "runId": "OPEN-PLUGIN-2026-11-08",
+  "verdict": "通过",
+  "checks": [
+    { "id": "G1", "item": "主线 pin 精确 0.2.1-rc.2", "state": "通过", "evidence": "P0-baseline.txt(package.json/require/lock 三点一致)" },
+    { "id": "G2", "item": "官方包零改动", "state": "通过", "evidence": "P0-baseline.txt:4 patch TARGET 审计无一指向 node_modules/@deepseek-ai/dsh;lock integrity 与实装一致;reapply CHECK 无官方包条目" },
+    { "id": "G3", "item": "新样例 open-probe 仅经扩展点", "state": "通过", "evidence": "mcp/open-probe/server.mjs + cordis.patch.yml insert(mcp-open-probe)+ dump-config 组装可见 + stdio 冒烟 3/3(P3-open-probe-smoke.txt)+ 负例(P3-open-probe-negative.txt)" },
+    { "id": "G4", "item": "手册 + 2 样例", "state": "通过", "evidence": "docs/DSH-如何添加任意插件.md(四路径含负例期望);新样例 open-probe;旧样例 mcp-repomap(生产)+ gate-grant 回归 11/11(P4-gate-grant-regression.txt)" },
+    { "id": "G5", "item": "patch 台账与 runtime 处置", "state": "通过", "evidence": "P4-runtime-check.txt(runtime=PATCHED,TARGET 非官方 dsh);豁免单 docs/DSH-runtime-patch-豁免-2026-11-08.md(选③豁免,停止宣称零 patch);gate-grant RETIRED 保持;brief/status CLEAN 保持" },
+    { "id": "G6", "item": "rc1 蓝绿冒烟 + 主线回滚", "state": "通过", "evidence": "P5-rc1-dump-config.txt(EXIT=0);P5-rc1-runtime-smoke.txt(最小真实 turn final=OK,reason=completed);P5-mainline-dump-config.txt(主线 0.2.1-rc.2 EXIT=0);回滚耗时≈0(副本独立 node_modules)" },
+    { "id": "G7", "item": "坏插件/缺依赖进程不崩", "state": "通过", "evidence": "P3-open-probe-negative.txt(broken entry → SyntaxError 可检,已还原);P5-rc1-runtime-smoke.txt(21 barename 插件 import 失败 → 进程存活、turn 完成 EXIT=0 —— 活体负例)" },
+    { "id": "G8", "item": "全部步骤有命令与证据路径", "state": "通过", "evidence": "本目录 P0-P5 文件 + docs 三份(矩阵/手册/豁免单)+ 工作日志" }
+  ],
+  "failedOrUnverified": [
+    { "item": "rc1 副本 headless profile 的 21 个 barename 插件未 link(import 失败但进程存活)", "state": "未完成(不影响总裁决)", "next": "副本内逐个 dsh plugin --profile headless add,或标记副本为『核心运行时蓝绿已验、全插件生态待 link』" },
+    { "item": "rc1 上带全闸门的拦截行为实测(闸门族仅证明组装与加载清单,未实测拦截)", "state": "未执行", "next": "副本 link 插件后跑 bash-gate 控制面负例" }
+  ],
+  "notes": "runtime patch 选择豁免(选项③),停止宣称零 patch;豁免单含最迟迁出触发条件。主线全程未动(pin/实装/dump 三证)。"
+}

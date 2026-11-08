@@ -1,0 +1,8 @@
+A1 双绿判定(2026-11-08)
+
+适配:rc1 副本 plugins/free-ladder/index.js 五处 — agent/request 瀑布差异化返回×2 → agent.model.select(next-step) 原样放行;handler rotate/paid 的 opts 写法 → model.select;current 读取加 model.current() 兜底。junction 重指 rc1 自有副本(原指主线,违反隔离,已修正)。
+
+①闸门负例复跑:A1-gate-negative-rerun.txt — bash-gate 拦截 CONTROL_PLANE_MUTATION ✓,模型转述拒绝,final reason=completed(此前 error)✓
+②最小真实 turn 复跑:A1-min-turn-rerun.txt — final reason=completed text=OK ✓
+
+判定:双绿 PASS。rc.1 适配清单 free-ladder 项关闭;可向负责人申请议切流(主线切 0.2.2-rc.1)。

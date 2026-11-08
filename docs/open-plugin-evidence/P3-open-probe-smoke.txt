@@ -1,0 +1,4 @@
+open-probe stdio smoke 2026-11-08
+initialize PASS / tools/list PASS (open_probe) / tools/call PASS
+payload: {ok:true,probe:open-plugin,ts:2026-11-08T09:50:51.962Z}
+verdict: PASS (3/3)

@@ -1,0 +1,12 @@
+PASS 模块冷加载成功
+PASS 导出 grantDecision/readWriteGrant/DENY_ALWAYS
+PASS VERSION = 1.1.0-dsh(迁移后版本) — 1.1.0-dsh
+PASS DENY_ALWAYS 含 delete_file/delete_project(绝对 veto)
+PASS 授权白名单内 → ok — seq=1
+PASS 绝对禁区 → 拒(denyAlways 不可扩权) — [opendesign-gate] delete_file 在绝对禁区（denyAlways），任何授权文件都打不开它。
+PASS 白名单外 → 拒 — [opendesign-gate] 授权 smoke-1 的白名单是 [create_artifact, write_f
+PASS 预算内第二次 → ok(seq=2) — seq=2
+PASS 预算耗尽(maxOps=2)→ 拒 — [opendesign-gate] 授权 smoke-1 预算已用尽（2/2）。续期=新授权=新批准。
+PASS 过期授权 → 拒 — [opendesign-gate] 授权 smoke-1 预算已用尽（2/2）。续期=新授权=新批准。
+PASS reapply-all 已标注 gate-grant RETIRED
+SMOKE: 11/11

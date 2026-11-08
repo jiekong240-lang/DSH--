@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "failure": null,
+  "report": [
+    {
+      "target": "C:/Users/64562/WorkBuddy/2026-10-12-13-09-47/dsh-sandbox/dsh-home/profiles/open-design/node_modules/@open-design/dsh-runtime/dist/index.js",
+      "mode": "check",
+      "sha256Before": "c6fb461dd83d3ee2b79d2e925d22f3cae97bd36c21b847315c3f8e42b1a19052",
+      "state": "PATCHED"
+    }
+  ]
+}

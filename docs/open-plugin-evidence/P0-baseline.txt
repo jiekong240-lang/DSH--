@@ -1,0 +1,71 @@
+=== P0 baseline 2026/11/08 ���� 17:43:53.20 === 
+    "@deepseek-ai/dsh": "0.2.1-rc.2",
+@deepseek-ai/dsh 0.2.1-rc.2
+{
+  "version": "0.2.1-rc.2",
+  "resolved": "https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.2.1-rc.2.tgz",
+  "integrity": "sha512-tvY+yhfKRifthbqPe/OK0AYxM5ZkvqfYq/jMYgJcEUxiRRL1Vwra3Ti5TB6AXgSWQdiPHYh/Vp6SJa9yHwMNuw=="
+}
+{
+  "openDesignCommit": "c722773f2eac5b259f0411861732770af44368f7",
+  "openDesignCommitDate": "2026-10-20T03:25:55Z",
+  "openDesignSubject": "[OPEND-4104] docs: define Plane PR title and emergency approval policy (#8872)",
+  "dshVersion": "0.2.1-rc.2",
+  "recordedAt": "2026-10-28",
+  "note": "4 个补丁均锚定此 OpenDesign commit 的 dist 构建产物。上游更新后需先 `git -C opendesign-source checkout <此commit>`（或确认 dist 锚点未变）再 reapply；锚点字符串变动会导致 --apply 拒绝(ANCHOR_MISMATCH)，属安全失败，需同步更新补丁脚本里的 A_*/B_* 锚点常量。补丁脚本里的 TARGET 仍硬编码本机绝对路径（与上游锚点无关），同机换工作区/换机时改 TARGET 即可。"
+}
+OpenDesign 上游锚点 commit: c722773f2eac5b259f0411861732770af44368f7 (2026-10-20T03:25:55Z)
+DSH 版本: 0.2.1-rc.2
+模式: CHECK（只报告，不改动）
+
+[gate-grant] RETIRED — MIGRATED into plugin source (v1.1.0-dsh)(不再检查/不再 reapply)
+[brief-autoconfirm] --check -> CLEAN
+[status-timing] --check -> CLEAN
+[runtime] --check -> OK
+
+完成。无异常。
+=== plugins === 
+android-delivery-gate
+arch-gate
+bash-gate-dsh
+claim-gate
+cua-gate-dsh
+desktop-lease-dsh
+dsh-monitor
+free-ladder
+live-code
+memory-dsh
+opendesign-gate
+prompt-layers
+rea-agent
+subagent-readonly
+task-budget
+team-budget
+team-model-router
+team-roles
+tool-watch-dsh
+watch-map
+write-verify-dsh
+=== overlays === 
+local-model.yml
+mcp-servers.yml
+od-verify.yml
+rea-agent-test.yml
+slim-tools.yml
+test-budget-low.yml
+test-cua-hand-only.yml
+test-gate-observe.yml
+test-router-map.yml
+win-bash.yml
+=== mcp === 
+coding-delegate
+comfy
+cua
+cua-playbooks
+drama
+dsh-status
+imagegen
+memory
+model-budget
+vision
+_shared
