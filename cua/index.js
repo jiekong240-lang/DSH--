@@ -3,11 +3,7 @@
  * Windows CUA 主入口
  * 混合观察 → 决策 → 执行 → 验证 → 回写（支持多步 + 失败恢复）
  *
- * 用法: node cua/index.js
- * 
- * TRACE 2026-11-08: 主循环支持多步执行与失败重试
- * TRACE 2026-11-08+: 点击后使用 compareObservations 验证状态变化；支持 targetName 解析为坐标（减少纯坐标依赖）
- * 参考：任务契约失败恢复 + OSWorld-Human 效率考虑 + HCU 三通道
+ * agent-desktop 深度参与：观察带 @ref、执行优先走 ad-* 通道、验证时对比树变化
  */
 const { observe, compareObservations, prepareVisionPayload } = require('./observer');
 const { decide, loadTask, saveTask, advanceTask, recordFailure, shouldRetry } = require('./task');
@@ -21,6 +17,11 @@ const MAX_STEPS = 20;
 
 async function resolveStepCoordinates(step, observation) {
   if (!step || step.x != null || !step.targetName) return step;
+  // 优先尝试 agent-desktop @ref（如果观察里已有快照）
+  if (observation.agentDesktop && step.targetName) {
+    // 简单名称匹配提示（实际解析可后续加强）
+    step.preferAgentDesktop = true;
+  }
   try {
     const found = await findElementsByName(step.targetName, 3);
     if (found.matches && found.matches.length > 0) {
@@ -43,10 +44,12 @@ async function resolveStepCoordinates(step, observation) {
 }
 
 async function runOnce(task) {
-  // 混合观察（截图 + AX）
-  const observation = await observe({ includeAx: true });
+  // 混合观察（含 agent-desktop，如果任务指定了 app）
+  const observation = await observe({
+    includeAx: true,
+    app: task.app || task.adApp,
+  });
 
-  // 可选：外部大脑建议（如果配置了 API）
   let suggested = null;
   try {
     suggested = await suggestFromVision(prepareVisionPayload(observation), task);
@@ -60,7 +63,6 @@ async function runOnce(task) {
   }
   if (!decision) return { done: true, reason: 'no more steps', observation };
 
-  // 解析名称为坐标（语义通道优先）
   if (decision.step) {
     decision.step = await resolveStepCoordinates(decision.step, observation);
   }
@@ -72,11 +74,14 @@ async function runOnce(task) {
   }
 
   if (observation.screenshotError) {
-    console.log('[CUA] warning: screenshot incomplete, action may be based on partial state');
+    console.log('[CUA] warning: screenshot incomplete');
   }
 
   const result = await execute(decision);
-  const verified = await observe({ includeAx: true });
+  const verified = await observe({
+    includeAx: true,
+    app: task.app || task.adApp,
+  });
   const verification = compareObservations(observation, verified);
 
   const sup = await supervise({ task, decision, result, verified, gate, verification });
@@ -86,7 +91,6 @@ async function runOnce(task) {
     return { done: false, result, verified, verification, nextTask, supervised: sup };
   }
 
-  // 失败恢复
   const failedTask = recordFailure(task, result && result.error ? result.error : 'action failed');
   if (shouldRetry(failedTask)) {
     console.log('[CUA] retry available, retries=', failedTask.retries);
@@ -97,7 +101,7 @@ async function runOnce(task) {
 }
 
 async function main() {
-  console.log('[CUA] core started (hybrid observe + multi-step + verification + name-resolve)');
+  console.log('[CUA] core started (agent-desktop deep + hybrid observe + multi-step + verification)');
 
   let task = loadTask();
   if (!task) {
@@ -115,7 +119,13 @@ async function main() {
   let current = task;
   while (steps < MAX_STEPS) {
     const out = await runOnce(current);
-    console.log('[CUA] step', steps, JSON.stringify({ done: out.done, blocked: out.blocked, reason: out.reason, retried: out.retried, verified: out.verification && out.verification.note }, null, 0));
+    console.log('[CUA] step', steps, JSON.stringify({
+      done: out.done,
+      blocked: out.blocked,
+      reason: out.reason,
+      retried: out.retried,
+      ad: !!(out.verification && out.verification.adChanged),
+    }, null, 0));
     if (out.done || out.blocked) {
       console.log('[CUA] finished:', out.reason || 'blocked');
       break;
