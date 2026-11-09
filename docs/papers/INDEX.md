@@ -63,9 +63,16 @@
 | WindowsAgentArena | https://github.com/microsoft/WindowsAgentArena | Windows 基准与环境 |
 | awesome-computer-use | https://github.com/ranpox/awesome-computer-use | 论文/工具汇总入口 |
 
+## 研究纪要（非论文、非实验报告）
+
+| 日期 | 标题 | 路径 | 作用 |
+|------|------|------|------|
+| 2026-11-09 | CUA 科研与自主编程体系·对话研究纪要 | [digests/2026-11-09-cua-autonomous-coding/](digests/2026-11-09-cua-autonomous-coding/README.md) | 验收纪律与实施检查表（DeepSeek Harness + API、边写边测、T0–T6、Verified、先单 Agent）。无真机 SHA、无对照跑数，不得写成已建成 |
+
 ## 批次日志
 
 | 批次 | 说明 |
 |------|------|
 | [2026-11-08](batches/2026-11-08.md) | 首批落盘：从既有 `CUA_FRONTIER_REFERENCES` 迁入总表 + 目录 README；对齐「真能干活」主题 |
 | [2026-11-09](batches/2026-11-09.md) | 双日检索新增 10 篇：完成率、检查点续跑、成本路由、声称审计、GUI 记忆、Windows AgentOS |
+| [2026-11-09 纪要](digests/2026-11-09-cua-autonomous-coding/README.md) | 同日增补对话研究纪要（非检索论文）：见批次文末「同日增补」与上表 |

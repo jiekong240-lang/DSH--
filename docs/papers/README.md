@@ -24,6 +24,7 @@ docs/papers/
   README.md                 ← 本说明（技术范围与作用）
   INDEX.md                  ← 条目总表（标题 / 主题标签 / 对应缺口 / 链接）
   batches/YYYY-MM-DD.md     ← 每次整理批次：新增条目 + 简短作用说明
+  digests/<date-slug>/      ← 对话研究纪要 / 实施规范草案（非实证论文；须标明无跑数）
 ```
 
 精选「必读」映射仍保留在旁路文件：
