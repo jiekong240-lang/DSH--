@@ -122,6 +122,80 @@ async function report(dir, state) {
   await fsp.rename(tmp, dest);
 }
 
+// Validate the whole model proposal before touching any source file.
+// The legacy single-patch JSON contract remains supported.
+async function preparePatchSet(project, proposal, inventoryFiles, verifyCommand) {
+  const patches = Array.isArray(proposal?.patches) ? proposal.patches : [proposal];
+  if (!patches.length || patches.length > 5) throw new Error('PATCH_SET_SIZE_INVALID');
+  const prepared = [];
+  const seen = new Set();
+  for (const patch of patches) {
+    if (!patch || typeof patch.oldText !== 'string' || !patch.oldText ||
+        typeof patch.newText !== 'string' || patch.newText.length > 30000) {
+      throw new Error('INVALID_PATCH');
+    }
+    const { rel, real } = await existingSource(project, patch.path);
+    if (!inventoryFiles.includes(rel)) throw new Error('UNKNOWN_FILE');
+    if (seen.has(rel)) throw new Error('DUPLICATE_PATCH_PATH');
+    if (isVerificationArtifact(rel, verifyCommand)) throw new Error('TEST_EDIT_REFUSED');
+    seen.add(rel);
+    const before = await fsp.readFile(real, 'utf8');
+    const count = before.split(patch.oldText).length - 1;
+    if (count !== 1) throw new Error('PATCH_MATCH_COUNT_' + count);
+    const after = before.replace(patch.oldText, patch.newText);
+    if (before === after) throw new Error('NO_CHANGE');
+    prepared.push({ rel, real, before, after, beforeSha: sha(before), afterSha: sha(after) });
+  }
+  return prepared;
+}
+
+async function applyPatchSet(prepared) {
+  // Stage every replacement before publishing any file. A failure during
+  // publish restores previously published files, and is reported as blocked.
+  const staged = [];
+  const published = [];
+  try {
+    for (const item of prepared) {
+      if (await fsp.readFile(item.real, 'utf8') !== item.before) {
+        throw new Error('SOURCE_CHANGED_CONCURRENTLY');
+      }
+      const temp = item.real + '.cua-stage-' + process.pid + '-' + crypto.randomBytes(6).toString('hex');
+      await fsp.writeFile(temp, item.after, { flag: 'wx' });
+      staged.push({ ...item, temp });
+    }
+    // Re-check all targets immediately before publication.
+    for (const item of staged) {
+      if (await fsp.readFile(item.real, 'utf8') !== item.before) {
+        throw new Error('SOURCE_CHANGED_CONCURRENTLY');
+      }
+    }
+    for (const item of staged) {
+      await fsp.rename(item.temp, item.real);
+      published.push(item);
+    }
+  } catch (error) {
+    const rollbackErrors = [];
+    for (const item of published.reverse()) {
+      try {
+        // Do not overwrite an external concurrent edit during rollback.
+        if (await fsp.readFile(item.real, 'utf8') === item.after) {
+          await fsp.writeFile(item.real, item.before, 'utf8');
+        } else rollbackErrors.push(item.rel + ':CONCURRENT_CHANGE');
+      } catch (rollbackError) {
+        rollbackErrors.push(item.rel + ':' + rollbackError.message);
+      }
+    }
+    if (rollbackErrors.length) {
+      throw new Error('PATCH_PUBLISH_FAILED_ROLLBACK_INCOMPLETE: ' + rollbackErrors.join(';'));
+    }
+    throw error;
+  } finally {
+    for (const item of staged) {
+      await fsp.rm(item.temp, { force: true }).catch(() => {});
+    }
+  }
+}
+
 async function runCodingLoop(options) {
   const project = await fsp.realpath(path.resolve(options.project));
   const goal = String(options.goal || '').trim();
@@ -160,7 +234,7 @@ async function runCodingLoop(options) {
     let patch;
     try {
       patch = await model([
-      { role: 'system', content: 'You are a coding agent. Return one JSON object with path, oldText, newText, reason. Only replace one exact existing source substring. Do not change tests or verification. Do not claim success. Do not output shell commands.' },
+      { role: 'system', content: 'You are a coding agent. Return JSON with either {path,oldText,newText,reason} for one source edit or {patches:[{path,oldText,newText},...],reason} for 2-5 distinct existing source files. Each oldText must match exactly once. Never edit tests, fixtures, verifier, build configuration or verification command. Never claim success. No shell commands.' },
       { role: 'user', content: JSON.stringify({ goal, files: sources, round: index + 1, inventory: files, previousVerification: lastResult, verificationCommand: verifyCommand }) }
       ], options.modelConfig);
     } catch (error) {
@@ -169,19 +243,15 @@ async function runCodingLoop(options) {
     }
     const turn = { index: index + 1, path: patch?.path || null, reason: patch?.reason || '' };
     try {
-      if (typeof patch.oldText !== 'string' || !patch.oldText || typeof patch.newText !== 'string' || patch.newText.length > 30000) throw new Error('INVALID_PATCH');
-      const { rel, real } = await existingSource(project, patch.path);
-      if (!files.includes(rel)) throw new Error('UNKNOWN_FILE');
-      if (isVerificationArtifact(rel, verifyCommand)) throw new Error('TEST_EDIT_REFUSED');
-      const before = await fsp.readFile(real, 'utf8');
-      const count = before.split(patch.oldText).length - 1;
-      if (count !== 1) throw new Error('PATCH_MATCH_COUNT_' + count);
-      const after = before.replace(patch.oldText, patch.newText);
-      if (before === after) throw new Error('NO_CHANGE');
-      if (await fsp.readFile(real, 'utf8') !== before) throw new Error('SOURCE_CHANGED_CONCURRENTLY');
-      await fsp.writeFile(real, after, 'utf8');
-      touched.add(rel);
-      turn.changed = { path: rel, beforeSha: sha(before), afterSha: sha(after) };
+      const prepared = await preparePatchSet(project, patch, files, verifyCommand);
+      await applyPatchSet(prepared);
+      for (const item of prepared) touched.add(item.rel);
+      turn.changed = prepared.length === 1
+        ? { path: prepared[0].rel, beforeSha: prepared[0].beforeSha, afterSha: prepared[0].afterSha }
+        : undefined;
+      turn.changes = prepared.map(item => ({
+        path: item.rel, beforeSha: item.beforeSha, afterSha: item.afterSha
+      }));
       lastResult = await runner(project, verifyCommand, options);
       turn.verification = lastResult;
       turn.outcome = lastResult.ok === true ? 'verified' : 'failed';
@@ -208,4 +278,4 @@ async function runCodingLoop(options) {
   return state;
 }
 
-module.exports = { runCodingLoop, deepseek, runCommand, relativeFile, isVerificationArtifact };
+module.exports = { runCodingLoop, deepseek, runCommand, relativeFile, isVerificationArtifact, preparePatchSet, applyPatchSet };
