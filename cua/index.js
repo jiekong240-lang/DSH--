@@ -24,28 +24,18 @@ function mergeBrainGrounding(planned, proposed, observation = {}) {
   if (!planned || !proposed || typeof proposed !== 'object') return planned;
   if (String(planned.action || '').toLowerCase() !== String(proposed.action || '').toLowerCase()) return planned;
   const grounded = { ...planned };
-  // The model's guessed pixels are not enough to ground a click.
-  // For targetName, resolveStepCoordinates must derive coordinates from
-  // exactly one real UI Automation element. Without targetName, retain only
-  // coordinates the task author actually supplied.
-  if (!planned.ref && typeof proposed.ref === 'string' && proposed.ref.length <= 100) {
-    const observed = String(observation.agentDesktop || '');
-    const escaped = proposed.ref.replace(/[.*+?^${}()|[]\]/g, '\  if (planned.x == null && planned.y == null &&
-      Number.isFinite(proposed.x) && Number.isFinite(proposed.y)) {
-    grounded.x = Math.round(proposed.x);
-    grounded.y = Math.round(proposed.y);
-  }
-  if (!planned.ref && typeof proposed.ref === 'string' && proposed.ref.length <= 100) {
-    grounded.ref = proposed.ref;
-  }');
-    if (new RegExp('(?:^|\\s)' + escaped + '(?=\\s|$)').test(observed)) {
-      grounded.ref = proposed.ref;
+
+  // A guessed pixel is never an authoritative target. Coordinates must
+  // come from the original task or a unique real UIA element.
+  if (!planned.ref && typeof proposed.ref === 'string') {
+    const ref = proposed.ref.trim();
+    const observedRefs = String(observation.agentDesktop || '').match(/[@#][A-Za-z0-9_-]+/g) || [];
+    if (/^[@#][A-Za-z0-9_-]{1,80}$/.test(ref) && observedRefs.includes(ref)) {
+      grounded.ref = ref;
     }
   }
-  // Preserve planned action, text, target, and expect. All are authoritative.
   return grounded;
 }
-
 async function resolveStepCoordinates(step, observation, locator = findElementsByName) {
   if (!step || step.x != null || !step.targetName) return step;
   // 优先尝试 agent-desktop @ref（如果观察里已有快照）
