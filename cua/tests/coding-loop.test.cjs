@@ -159,3 +159,50 @@ test('multi-file repair refuses test edits and duplicate paths', async () => fix
     assert.equal(await fs.readFile(path.join(dir, 'app.js'), 'utf8'), 'const value = 1;\n');
   }
 }));
+
+test('create new source module and update caller in one verified round', async () => fixture(async dir => {
+  await fs.writeFile(path.join(dir, 'app.js'), "module.exports = () => 1;\n");
+  await fs.writeFile(path.join(dir, 'check.cjs'), "if (require('./app')() !== 7) process.exit(1);\n");
+  const out = await runCodingLoop({
+    project: dir, goal: 'add helper module', maxRounds: 2,
+    verifyCommand: [process.execPath, 'check.cjs'],
+    model: async () => ({ patches: [
+      { op: 'create', path: 'helper.js', content: 'module.exports = () => 7;\n' },
+      { op: 'replace', path: 'app.js', oldText: '() => 1', newText: "require('./helper')" }
+    ] })
+  });
+  assert.equal(out.status, 'verified');
+  assert.deepEqual(out.changedPaths.sort(), ['app.js', 'helper.js']);
+  assert.equal(await fs.readFile(path.join(dir, 'helper.js'), 'utf8'), 'module.exports = () => 7;\n');
+  assert.equal(out.rounds[0].changes.find(x => x.path === 'helper.js').beforeSha, null);
+}));
+
+test('new source file cannot overwrite existing file or verification artifact', async () => fixture(async dir => {
+  await fs.writeFile(path.join(dir, 'app.js'), 'const n = 1;\n');
+  await fs.writeFile(path.join(dir, 'check.cjs'), 'process.exit(1)\n');
+  for (const target of ['app.js', 'check.cjs', '../outside.js', 'missing/helper.js']) {
+    const out = await runCodingLoop({
+      project: dir, goal: 'add source', maxRounds: 1,
+      verifyCommand: [process.execPath, 'check.cjs'],
+      model: async () => ({ patches: [{ op: 'create', path: target, content: 'hello' }] })
+    });
+    assert.equal(out.status, 'not-verified');
+    assert.equal(out.rounds[0].outcome, 'blocked');
+    assert.equal(await fs.readFile(path.join(dir, 'app.js'), 'utf8'), 'const n = 1;\n');
+  }
+}));
+
+test('invalid create in patch set does not change valid source edit', async () => fixture(async dir => {
+  await fs.writeFile(path.join(dir, 'app.js'), 'const n = 1;\n');
+  await fs.writeFile(path.join(dir, 'check.cjs'), 'process.exit(1)\n');
+  const out = await runCodingLoop({
+    project: dir, goal: 'add source', maxRounds: 1,
+    verifyCommand: [process.execPath, 'check.cjs'],
+    model: async () => ({ patches: [
+      { op: 'replace', path: 'app.js', oldText: '= 1', newText: '= 2' },
+      { op: 'create', path: 'check.cjs', content: 'process.exit(0)' }
+    ] })
+  });
+  assert.equal(out.status, 'not-verified');
+  assert.equal(await fs.readFile(path.join(dir, 'app.js'), 'utf8'), 'const n = 1;\n');
+}));

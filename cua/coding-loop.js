@@ -130,56 +130,86 @@ async function preparePatchSet(project, proposal, inventoryFiles, verifyCommand)
   const prepared = [];
   const seen = new Set();
   for (const patch of patches) {
-    if (!patch || typeof patch.oldText !== 'string' || !patch.oldText ||
-        typeof patch.newText !== 'string' || patch.newText.length > 30000) {
-      throw new Error('INVALID_PATCH');
-    }
-    const { rel, real } = await existingSource(project, patch.path);
-    if (!inventoryFiles.includes(rel)) throw new Error('UNKNOWN_FILE');
+    if (!patch || typeof patch !== 'object') throw new Error('INVALID_PATCH');
+    const op = patch.op || 'replace';
+    if (!['replace', 'create'].includes(op)) throw new Error('INVALID_PATCH_OP');
+    const rel = relativeFile(patch.path);
     if (seen.has(rel)) throw new Error('DUPLICATE_PATCH_PATH');
     if (isVerificationArtifact(rel, verifyCommand)) throw new Error('TEST_EDIT_REFUSED');
     seen.add(rel);
+    if (op === 'create') {
+      if (typeof patch.content !== 'string' || !patch.content || patch.content.length > 30000) {
+        throw new Error('INVALID_CREATE_CONTENT');
+      }
+      const root = await fsp.realpath(project);
+      const parent = await fsp.realpath(path.dirname(path.join(root, rel)));
+      if (parent !== root && !parent.startsWith(root + path.sep)) throw new Error('OUTSIDE_PROJECT');
+      const real = path.join(parent, path.basename(rel));
+      try {
+        await fsp.lstat(real);
+        throw new Error('CREATE_TARGET_EXISTS');
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+      prepared.push({ op, rel, real, before: null, after: patch.content,
+        beforeSha: null, afterSha: sha(patch.content) });
+      continue;
+    }
+    if (typeof patch.oldText !== 'string' || !patch.oldText ||
+        typeof patch.newText !== 'string' || patch.newText.length > 30000) {
+      throw new Error('INVALID_PATCH');
+    }
+    const { real } = await existingSource(project, rel);
+    if (!inventoryFiles.includes(rel)) throw new Error('UNKNOWN_FILE');
     const before = await fsp.readFile(real, 'utf8');
     const count = before.split(patch.oldText).length - 1;
     if (count !== 1) throw new Error('PATCH_MATCH_COUNT_' + count);
     const after = before.replace(patch.oldText, patch.newText);
     if (before === after) throw new Error('NO_CHANGE');
-    prepared.push({ rel, real, before, after, beforeSha: sha(before), afterSha: sha(after) });
+    prepared.push({ op, rel, real, before, after, beforeSha: sha(before), afterSha: sha(after) });
   }
   return prepared;
 }
 
 async function applyPatchSet(prepared) {
-  // Stage every replacement before publishing any file. A failure during
-  // publish restores previously published files, and is reported as blocked.
-  const staged = [];
-  const published = [];
+  // Stage all contents first. Publication is best-effort rollback, not crash-atomic.
+  const staged = [], published = [];
+  async function assertUnchanged(item) {
+    if (item.op === 'create') {
+      try {
+        await fsp.lstat(item.real);
+        throw new Error('CREATE_TARGET_EXISTS');
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    } else if (await fsp.readFile(item.real, 'utf8') !== item.before) {
+      throw new Error('SOURCE_CHANGED_CONCURRENTLY');
+    }
+  }
   try {
     for (const item of prepared) {
-      if (await fsp.readFile(item.real, 'utf8') !== item.before) {
-        throw new Error('SOURCE_CHANGED_CONCURRENTLY');
-      }
+      await assertUnchanged(item);
       const temp = item.real + '.cua-stage-' + process.pid + '-' + crypto.randomBytes(6).toString('hex');
       await fsp.writeFile(temp, item.after, { flag: 'wx' });
       staged.push({ ...item, temp });
     }
-    // Re-check all targets immediately before publication.
+    for (const item of staged) await assertUnchanged(item);
     for (const item of staged) {
-      if (await fsp.readFile(item.real, 'utf8') !== item.before) {
-        throw new Error('SOURCE_CHANGED_CONCURRENTLY');
+      if (item.op === 'create') {
+        // Exclusive destination creation: never overwrite an existing file.
+        await fsp.copyFile(item.temp, item.real, fs.constants.COPYFILE_EXCL);
+      } else {
+        await fsp.rename(item.temp, item.real);
       }
-    }
-    for (const item of staged) {
-      await fsp.rename(item.temp, item.real);
       published.push(item);
     }
   } catch (error) {
     const rollbackErrors = [];
     for (const item of published.reverse()) {
       try {
-        // Do not overwrite an external concurrent edit during rollback.
         if (await fsp.readFile(item.real, 'utf8') === item.after) {
-          await fsp.writeFile(item.real, item.before, 'utf8');
+          if (item.op === 'create') await fsp.unlink(item.real);
+          else await fsp.writeFile(item.real, item.before, 'utf8');
         } else rollbackErrors.push(item.rel + ':CONCURRENT_CHANGE');
       } catch (rollbackError) {
         rollbackErrors.push(item.rel + ':' + rollbackError.message);
@@ -222,8 +252,9 @@ async function runCodingLoop(options) {
   const touched = new Set();
 
   for (let index = 0; index < maxRounds; index++) {
+    const currentFiles = await inventory(project);
     const sources = [];
-    for (const file of files.slice(0, 35)) {
+    for (const file of currentFiles.slice(0, 35)) {
       try {
         const { real, rel } = await existingSource(project, file);
         const content = await fsp.readFile(real, 'utf8');
@@ -234,8 +265,8 @@ async function runCodingLoop(options) {
     let patch;
     try {
       patch = await model([
-      { role: 'system', content: 'You are a coding agent. Return JSON with either {path,oldText,newText,reason} for one source edit or {patches:[{path,oldText,newText},...],reason} for 2-5 distinct existing source files. Each oldText must match exactly once. Never edit tests, fixtures, verifier, build configuration or verification command. Never claim success. No shell commands.' },
-      { role: 'user', content: JSON.stringify({ goal, files: sources, round: index + 1, inventory: files, previousVerification: lastResult, verificationCommand: verifyCommand }) }
+      { role: 'system', content: 'You are a coding agent. Return JSON with either {path,oldText,newText,reason} for a legacy edit or {patches:[...],reason} with 1-5 operations: {op:replace,path,oldText,newText} on existing files, or {op:create,path,content} for a new source file in an existing directory. Every oldText must match exactly once. Never edit tests, fixtures, verifier, build configuration or verification command. Never claim success. No shell commands.' },
+      { role: 'user', content: JSON.stringify({ goal, files: sources, round: index + 1, inventory: currentFiles, previousVerification: lastResult, verificationCommand: verifyCommand }) }
       ], options.modelConfig);
     } catch (error) {
       state.rounds.push({ index: index + 1, outcome: 'model-error', error: String(error.message || error) });
@@ -243,7 +274,7 @@ async function runCodingLoop(options) {
     }
     const turn = { index: index + 1, path: patch?.path || null, reason: patch?.reason || '' };
     try {
-      const prepared = await preparePatchSet(project, patch, files, verifyCommand);
+      const prepared = await preparePatchSet(project, patch, currentFiles, verifyCommand);
       await applyPatchSet(prepared);
       for (const item of prepared) touched.add(item.rel);
       turn.changed = prepared.length === 1
