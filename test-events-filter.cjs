@@ -111,13 +111,12 @@ async function main() {
     console.log('PASS: API zero timestamp, ranges, counts, actual browser filter');
   } finally {
     if (child && child.exitCode === null) {
+      const closed = new Promise(resolve => child.once('close', resolve));
       child.kill();
-      await Promise.race([
-        new Promise(resolve => child.once('exit', resolve)),
-        new Promise(resolve => setTimeout(resolve, 3000))
-      ]);
+      await Promise.race([closed, new Promise(resolve => setTimeout(resolve, 5000))]);
     }
-    await fs.rm(dir, { recursive: true, force: true });
+    // Windows may retain the child image/file handle briefly after 'exit'.
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 12, retryDelay: 250 });
   }
 }
 main().catch(e => { console.error('FAIL:', e.stack || e); process.exitCode = 1; });
