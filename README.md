@@ -76,12 +76,14 @@ logs/                 # 运行时审计（cua-audit.jsonl）
 - 对照进展：`docs/CUA_PROGRESS.md`
 - 架构说明：`docs/CUA_ARCHITECTURE.md`
 
-## 下一步（优先级）
+## 当前实现与下一步（以 PR #3 为准）
 
-1. 在 `cua/` 实现最小可行闭环（观察 → 决策 → 执行 → 验证 → 回写）
-2. 把屏幕操作与现有哨兵闸门对接
-3. 建立任务契约与失败恢复机制
-4. 监控大屏降级为运维工具
+- 当前改造位于独立分支 `feat/cua-verified-coding-loop-20261110`，还未合并 `main`。
+- 已有 `cua/code-task.js`：DeepSeek API 自主小步修复→真实测试；`cua/mcp-server.js`：MCP stdio 工具调用入口。
+- 已加入写前 checkpoint、读后验证、错误可追踪恢复；不将驱动 `ok` 或截图文件名变化视为目标完成。
+- 待真实验收：Windows 桌面 UIA 操作，正式 DSH MCP 注册，真实 DeepSeek API，FreeCAD 保存并独立重开，多文件产品级编码。
+
+请先核对 `docs/CUA_UNFINISHED_AUDIT_2026-11-10.md` 的已完成/待实测清单，再安排真机任务。
 
 详见 `docs/CUA_ARCHITECTURE.md`、`docs/CUA_PROGRESS.md` 和 `cua/README.md`。
 
@@ -101,19 +103,19 @@ api_contract:
   "GET /api/events":
     query: "from?:epoch-ms, to?:epoch-ms (both optional)"
     behavior: "filter eventBuf by ts in [from,to]; no params = full"
-    response_200: '{events:[{seq,ts,source,kind,tool,target,status}], counts}'
+    response_200: '{events:[{seq,ts,source,kind,tool,target,status}], counts, filteredCounts}'
     response_400: "from/to present but not numeric"
-    known_defect: "server.js:321 ts:Number(b.ts)||Date.now() — caller ts===0 replaced by now; task spec requires preserving ts===0"
+    status: "历史 ts=0 缺陷：当前主处理器已正确保留 0；本轮进一步修正哨兵通道和非法值校验"
   "POST /api/event":
     body: "{kind,tool,target,status,source?,ts?,file?}"
-    behavior: "ts preserved if numeric-nonzero; file NOT stored (pre-existing shape — do not assume round-trip); kind=code registers file via target+cwd into fileRegistry"
+    behavior: "ts=0 retained; invalid nonfinite ts returns 400; kind=code registers target in fileRegistry; do not assume request file attribute round-trips"
     response_200: '{ok:true,...}'
   "GET /api/files": "{files:[{file,lastTs,...}]}"
 
 frontend_contract:
   entry: "public/index.html loads public/app.js"
   filter_flow: "inputs #filterFrom/#filterTo → GET /api/events?from&to → render into #feedList"
-  known_defect: "app.js:951 list.innerActivity.list — innerActivity undefined; TypeError on every successful query; swallowed by .catch(); user keeps stale list. FIX = remove/replace that assignment before innerHTML render. NOT YET FIXED."
+  status: "历史 innerActivity 语句在本轮读取的实际源码中已不存在；本轮补筛选 0 值、过期响应、计数同步的真实函数回归测试"
 
 architecture:
   server_js: "http server + eventBuf(in-memory) + fileRegistry(persisted state/file-registry.json) + static public/"
@@ -136,7 +138,7 @@ forbidden:
   - "assuming file field round-trips through POST /api/event"
 
 pending_tasks:
-  - "fix app.js:951 (user-visible filter rendering)"
-  - "preserve ts===0 in POST /api/event"
-  - "test: no orphan listener on 3999 after failure paths"
+  - "真实浏览器页面点击筛选与 WebGL 整体画面验收"
+  - "用户 Windows 实机桌面 UIA 与真实 DeepSeek API 验收"
+  - "正式 DSH MCP 注册与产品交付独立重开"
 ```
