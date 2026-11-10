@@ -53,10 +53,12 @@ function requestHumanApproval(decision, reason) {
 }
 
 async function supervise(ctx) {
-  const resultOk = !!(ctx.result && ctx.result.ok);
+  const driverOk = !!(ctx.result && ctx.result.ok);
+  const resultOk = driverOk && !!(ctx.verification && ctx.verification.status === 'verified');
   const record = {
     task: ctx.task && ctx.task.id,
     step: ctx.decision && ctx.decision.step,
+    driverOk,
     resultOk,
     verification: ctx.verification || null,
     note: 'supervise cycle',

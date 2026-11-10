@@ -6,12 +6,13 @@
  * agent-desktop 深度参与：观察带 @ref、执行优先走 ad-* 通道、验证时对比树变化
  */
 const { observe, compareObservations, prepareVisionPayload } = require('./observer');
-const { decide, loadTask, saveTask, advanceTask, recordFailure, shouldRetry } = require('./task');
+const { decide, loadTask, saveTask, advanceTask, recordFailure } = require('./task');
 const { execute } = require('./action');
 const { supervise } = require('./supervisor');
 const { checkGate } = require('./gate');
 const { findElementsByName, parseBoundingRectangle } = require('./accessibility');
 const { suggestFromVision } = require('./brain');
+const { verifyStep } = require('./step-verify');
 
 const MAX_STEPS = 20;
 
@@ -43,16 +44,23 @@ async function resolveStepCoordinates(step, observation) {
   return step;
 }
 
-async function runOnce(task) {
+async function runOnce(task, ports = {}) {
+  const observeNow = ports.observe || observe;
+  const executeNow = ports.execute || execute;
+  const proposeNow = ports.suggestFromVision || suggestFromVision;
+  const gateNow = ports.checkGate || checkGate;
+  const superviseNow = ports.supervise || supervise;
+  const advanceNow = ports.advanceTask || advanceTask;
+  const failureNow = ports.recordFailure || recordFailure;
   // 混合观察（含 agent-desktop，如果任务指定了 app）
-  const observation = await observe({
+  const observation = await observeNow({
     includeAx: true,
     app: task.app || task.adApp,
   });
 
   let suggested = null;
   try {
-    suggested = await suggestFromVision(prepareVisionPayload(observation), task);
+    suggested = await proposeNow(prepareVisionPayload(observation), task);
   } catch (e) {
     console.log('[CUA] brain suggest skipped:', e.message);
   }
@@ -67,7 +75,7 @@ async function runOnce(task) {
     decision.step = await resolveStepCoordinates(decision.step, observation);
   }
 
-  const gate = checkGate(decision);
+  const gate = gateNow(decision);
   if (!gate.allow) {
     console.log('[CUA] blocked by gate:', gate.reason, gate.verdict);
     return { blocked: true, reason: gate.reason, gate, observation };
@@ -77,27 +85,28 @@ async function runOnce(task) {
     console.log('[CUA] warning: screenshot incomplete');
   }
 
-  const result = await execute(decision);
-  const verified = await observe({
+  const result = await executeNow(decision);
+  const verified = await observeNow({
     includeAx: true,
     app: task.app || task.adApp,
   });
-  const verification = compareObservations(observation, verified);
+  const observationDelta = compareObservations(observation, verified);
+  const verification = verifyStep(decision.step, observation, verified, result);
+  verification.observationDelta = observationDelta;
 
-  const sup = await supervise({ task, decision, result, verified, gate, verification });
+  const sup = await superviseNow({ task, decision, result, verified, gate, verification });
 
-  if (result && result.ok) {
-    const nextTask = advanceTask(task);
+  if (verification.status === 'verified') {
+    const nextTask = advanceNow(task);
     return { done: false, result, verified, verification, nextTask, supervised: sup };
   }
 
-  const failedTask = recordFailure(task, result && result.error ? result.error : 'action failed');
-  if (shouldRetry(failedTask)) {
-    console.log('[CUA] retry available, retries=', failedTask.retries);
-    return { done: false, result, verified, verification, nextTask: failedTask, retried: true, supervised: sup };
-  }
-
-  return { done: true, reason: 'max retries exceeded', result, verified, verification, nextTask: failedTask, supervised: sup };
+  // Do not replay a potentially dispatched click/type merely because the
+  // driver returned an error or the new screenshot has a different filename.
+  // Keep the current step for a fresh observation / explicit replanning.
+  const reason = verification.reason || 'STEP_NOT_VERIFIED';
+  const failedTask = failureNow(task, reason);
+  return { done: true, reason, result, verified, verification, nextTask: failedTask, supervised: sup };
 }
 
 async function main() {
