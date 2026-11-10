@@ -66,11 +66,38 @@ async function resolveStepCoordinates(step, observation, locator = findElementsB
 }
 
 async function runOnce(task, ports = {}) {
-  // Recover by observation/reconciliation, NEVER silently replay an action.
-  if (task?.pendingAction) return {
-    done: true, reason: 'PENDING_ACTION_RECONCILIATION',
-    pendingAction: task.pendingAction,
-  };
+  // Reconcile a crashed write using a NEW observation, never by replaying
+  // the physical action. Only an explicit, observable postcondition allows
+  // progress; missing evidence preserves the in-flight checkpoint.
+  if (task?.pendingAction) {
+    const pending = task.pendingAction;
+    const planned = Array.isArray(task.steps) ? task.steps[0] : null;
+    if (!planned || String(planned.action) !== String(pending.step?.action)) {
+      return { done: true, reason: 'PENDING_ACTION_PLAN_MISMATCH', pendingAction: pending };
+    }
+    let observed;
+    try {
+      observed = await (ports.observe || observe)({
+        includeAx: true, app: task.app || task.adApp,
+      });
+    } catch (error) {
+      return { done: true, reason: 'PENDING_ACTION_OBSERVATION_FAILED',
+        pendingAction: pending, error: String(error.message || error) };
+    }
+    const verified = verifyStep(pending.step, null, observed, { ok: true });
+    if (verified.status !== 'verified') {
+      return { done: true, reason: 'PENDING_ACTION_RECONCILIATION',
+        pendingAction: pending, verification: verified };
+    }
+    try {
+      const nextTask = (ports.advanceTask || advanceTask)(task);
+      return { done: false, recovered: true, reason: 'PENDING_ACTION_POSTCONDITION_VERIFIED',
+        nextTask, verification: { ...verified, source: 'recovery_observation_only' } };
+    } catch (error) {
+      return { done: true, reason: 'PENDING_ACTION_ADVANCE_FAILED',
+        pendingAction: pending, error: String(error.message || error) };
+    }
+  }
   const beginNow = ports.beginAction || beginAction;
   const observeNow = ports.observe || observe;
   const executeNow = ports.execute || execute;

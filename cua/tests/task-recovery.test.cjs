@@ -41,7 +41,10 @@ test('CUA refuses to replay an in-flight action after restart', async () => fixt
   store.saveTask(task());
   store.beginAction(store.loadTask(), task().steps[0]);
   let writes = 0;
-  const result = await runOnce(store.loadTask(), { execute: async () => { writes++; return { ok: true }; } });
+  const result = await runOnce(store.loadTask(), {
+    observe: async () => ({ ...obs, focus: { Name: 'Different' } }),
+    execute: async () => { writes++; return { ok: true }; }
+  });
   assert.equal(result.reason, 'PENDING_ACTION_RECONCILIATION');
   assert.equal(writes, 0);
 }));
@@ -173,3 +176,34 @@ test('unverified pixel guesses never bypass targetName resolution', async () => 
   assert.equal(result.reason, 'TARGET_UNRESOLVED');
   assert.equal(sent, 0);
 });
+
+
+test('restart reconciles already-observed goal without retyping', async () => fixture(async file => {
+  const store = createTaskStore(file);
+  store.saveTask(task());
+  store.beginAction(store.loadTask(), task().steps[0]);
+  let writes = 0;
+  const result = await runOnce(store.loadTask(), {
+    observe: async () => obs,
+    advanceTask: store.advanceTask,
+    execute: async () => { writes++; return { ok: true }; },
+  });
+  assert.equal(result.recovered, true);
+  assert.equal(result.reason, 'PENDING_ACTION_POSTCONDITION_VERIFIED');
+  assert.equal(result.verification.source, 'recovery_observation_only');
+  assert.equal(writes, 0);
+  assert.equal(store.loadTask().steps.length, 0);
+  assert.equal(store.loadTask().pendingAction, undefined);
+});
+
+test('recovery observation failure retains checkpoint and never replays', async () => fixture(async file => {
+  const store = createTaskStore(file);
+  store.saveTask(task());
+  store.beginAction(store.loadTask(), task().steps[0]);
+  const result = await runOnce(store.loadTask(), {
+    observe: async () => { throw new Error('UIA unavailable'); },
+    execute: async () => { throw new Error('must not execute'); },
+  });
+  assert.equal(result.reason, 'PENDING_ACTION_OBSERVATION_FAILED');
+  assert.equal(store.loadTask().pendingAction.action, 'type');
+}));
