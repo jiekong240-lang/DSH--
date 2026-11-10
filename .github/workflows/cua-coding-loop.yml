@@ -3,10 +3,16 @@ on:
   push:
     paths:
       - 'cua/**'
+      - 'server.js'
+      - 'public/app.js'
+      - 'test-events-filter.cjs'
       - '.github/workflows/cua-coding-loop.yml'
   pull_request:
     paths:
       - 'cua/**'
+      - 'server.js'
+      - 'public/app.js'
+      - 'test-events-filter.cjs'
       - '.github/workflows/cua-coding-loop.yml'
 jobs:
   offline-contracts:
@@ -27,5 +33,9 @@ jobs:
           node --check cua/step-verify.js
           node --check cua/coding-loop.js
           node --check cua/code-task.js
+          node --check server.js
+          node --check test-events-filter.cjs
       - name: Run offline loop tests
         run: node --test cua/tests/*.test.cjs
+      - name: Real monitor API and filter function regression
+        run: node test-events-filter.cjs
