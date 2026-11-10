@@ -6,7 +6,7 @@
  * agent-desktop 深度参与：观察带 @ref、执行优先走 ad-* 通道、验证时对比树变化
  */
 const { observe, compareObservations, prepareVisionPayload } = require('./observer');
-const { decide, loadTask, saveTask, advanceTask, recordFailure } = require('./task');
+const { decide, loadTask, saveTask, beginAction, advanceTask, recordFailure } = require('./task');
 const { execute } = require('./action');
 const { supervise } = require('./supervisor');
 const { checkGate } = require('./gate');
@@ -15,6 +15,7 @@ const { suggestFromVision } = require('./brain');
 const { verifyStep } = require('./step-verify');
 
 const MAX_STEPS = 20;
+const READ_ACTIONS = new Set(['observe', 'list', 'snapshot', 'ad-snapshot']);
 
 async function resolveStepCoordinates(step, observation) {
   if (!step || step.x != null || !step.targetName) return step;
@@ -45,6 +46,12 @@ async function resolveStepCoordinates(step, observation) {
 }
 
 async function runOnce(task, ports = {}) {
+  // Recover by observation/reconciliation, NEVER silently replay an action.
+  if (task?.pendingAction) return {
+    done: true, reason: 'PENDING_ACTION_RECONCILIATION',
+    pendingAction: task.pendingAction,
+  };
+  const beginNow = ports.beginAction || beginAction;
   const observeNow = ports.observe || observe;
   const executeNow = ports.execute || execute;
   const proposeNow = ports.suggestFromVision || suggestFromVision;
@@ -85,28 +92,55 @@ async function runOnce(task, ports = {}) {
     console.log('[CUA] warning: screenshot incomplete');
   }
 
-  const result = await executeNow(decision);
-  const verified = await observeNow({
-    includeAx: true,
-    app: task.app || task.adApp,
-  });
+  let activeTask = task;
+  const mutating = !READ_ACTIONS.has(String(decision.step?.action || '').toLowerCase());
+  if (mutating) {
+    try {
+      activeTask = beginNow(task, decision.step);
+    } catch (error) {
+      return { done: true, reason: 'PRE_ACTION_CHECKPOINT_FAILED', error: String(error.message || error) };
+    }
+  }
+
+  let result;
+  try {
+    result = await executeNow(decision);
+  } catch (error) {
+    result = { ok: false, error: String(error.message || error) };
+  }
+  let verified;
+  try {
+    verified = await observeNow({ includeAx: true, app: task.app || task.adApp });
+  } catch (error) {
+    verified = null; // unknown outcome must not advance the task
+  }
   const observationDelta = compareObservations(observation, verified);
   const verification = verifyStep(decision.step, observation, verified, result);
   verification.observationDelta = observationDelta;
 
-  const sup = await superviseNow({ task, decision, result, verified, gate, verification });
+  const sup = await superviseNow({ task: activeTask, decision, result, verified, gate, verification });
 
   if (verification.status === 'verified') {
-    const nextTask = advanceNow(task);
-    return { done: false, result, verified, verification, nextTask, supervised: sup };
+    try {
+      const nextTask = advanceNow(activeTask);
+      return { done: false, result, verified, verification, nextTask, supervised: sup };
+    } catch (error) {
+      return { done: true, reason: 'POST_ACTION_PERSIST_FAILED', error: String(error.message || error),
+        result, verified, verification, supervised: sup };
+    }
   }
 
   // Do not replay a potentially dispatched click/type merely because the
   // driver returned an error or the new screenshot has a different filename.
   // Keep the current step for a fresh observation / explicit replanning.
   const reason = verification.reason || 'STEP_NOT_VERIFIED';
-  const failedTask = failureNow(task, reason);
-  return { done: true, reason, result, verified, verification, nextTask: failedTask, supervised: sup };
+  try {
+    const failedTask = failureNow(activeTask, reason);
+    return { done: true, reason, result, verified, verification, nextTask: failedTask, supervised: sup };
+  } catch (error) {
+    return { done: true, reason: 'FAILURE_RECORD_PERSIST_FAILED', error: String(error.message || error),
+      result, verified, verification, supervised: sup };
+  }
 }
 
 async function main() {
@@ -133,7 +167,7 @@ async function main() {
       blocked: out.blocked,
       reason: out.reason,
       retried: out.retried,
-      ad: !!(out.verification && out.verification.adChanged),
+      ad: !!(out.verification && out.verification.observationDelta && out.verification.observationDelta.adChanged),
     }, null, 0));
     if (out.done || out.blocked) {
       console.log('[CUA] finished:', out.reason || 'blocked');
