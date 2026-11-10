@@ -1,0 +1,31 @@
+name: CUA coding loop checks
+on:
+  push:
+    paths:
+      - 'cua/**'
+      - '.github/workflows/cua-coding-loop.yml'
+  pull_request:
+    paths:
+      - 'cua/**'
+      - '.github/workflows/cua-coding-loop.yml'
+jobs:
+  offline-contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: |
+          node --check cua/index.js
+          node --check cua/supervisor.js
+          node --check cua/step-verify.js
+          node --check cua/coding-loop.js
+          node --check cua/code-task.js
+      - name: Run offline loop tests
+        run: node --test cua/tests/*.test.cjs
