@@ -1,52 +1,92 @@
 'use strict';
 /**
- * 外部 API 大脑骨架
- * 
- * CORE 边界：视觉理解与规划走外部 API，本地只负责观察与执行
- * 
- * TRACE 2026-11-08: 初始骨架。使用 prepareVisionPayload 构建请求，支持 CUA_VISION_API 环境变量。
- * 若未配置 API，返回 null，上层回退到本地 task.decide。
- * 
- * 预期请求：POST JSON { payload, taskGoal, currentSteps }
- * 预期响应：{ step: { action, x, y, text, targetName, ... }, confidence, note }
+ * Semantic CUA planning through DeepSeek API, or an existing dedicated
+ * CUA_VISION_API endpoint. DeepSeek-chat consumes TEXT/UIA snapshots only:
+ * local screenshot paths are NOT image pixels and are never represented as
+ * visual evidence. A separate vision-capable endpoint is needed for images.
  */
-const { prepareVisionPayload } = require('./observer');
+const { randomUUID } = require('node:crypto');
 
-async function suggestFromVision(payload, task) {
-  const apiUrl = process.env.CUA_VISION_API || process.env.CUA_BRAIN_API;
-  if (!apiUrl) {
-    return null; // 未配置，使用本地决策
+async function suggestFromVision(payload, task, options = {}) {
+  const env = options.env || process.env;
+  const fetchImpl = options.fetchImpl || fetch;
+  const next = Array.isArray(task?.steps) ? task.steps[0] : null;
+  if (!next || typeof next.action !== 'string') return null;
+
+  const visionUrl = env.CUA_VISION_API || env.CUA_BRAIN_API;
+  const deepseek = !visionUrl && !!env.DEEPSEEK_API_KEY;
+  if (!visionUrl && !deepseek) return null;
+
+  let url, body, headers;
+  if (visionUrl) {
+    url = visionUrl;
+    headers = { 'Content-Type': 'application/json' };
+    body = {
+      payload: payload || {}, goal: task.goal,
+      remainingSteps: task.steps, ts: Date.now(),
+    };
+  } else {
+    url = String(env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '') + '/chat/completions';
+    headers = {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + env.DEEPSEEK_API_KEY,
+    };
+    const observation = {
+      // Important: path-only screenshots are omitted: DeepSeek-chat is text.
+      focus: payload?.focus || null,
+      accessibility: payload?.accessibility || null,
+      accessibilitySummary: payload?.accessibilitySummary || null,
+      windows: payload?.windows || [],
+      agentDesktopSummary: payload?.agentDesktopSummary || null,
+      channels: payload?.channels || {},
+    };
+    body = {
+      model: env.DEEPSEEK_CUA_MODEL || env.DEEPSEEK_MODEL || 'deepseek-chat',
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content:
+          'You ground a Windows UI action in an accessibility snapshot. ' +
+          'Reply only as JSON: {"step":{"action":"<same action as planned>",' +
+          '"ref":"<observed element reference if present>","x":0,"y":0},' +
+          '"confidence":0.0,"note":"short"}. ' +
+          'Do not invent coordinates or references. Do not modify text, action, target or expected result. ' +
+          'If insufficient data, reply {"step":null,"note":"insufficient UI evidence"}.'
+        },
+        { role: 'user', content: JSON.stringify({
+          goal: task.goal, plannedStep: next,
+          semanticObservation: observation,
+        }) },
+      ],
+    };
   }
 
-  const body = {
-    payload: payload || {},
-    goal: task && task.goal,
-    remainingSteps: task && task.steps,
-    ts: Date.now(),
-  };
-
   try {
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15000),
+    const response = await fetchImpl(url, {
+      method: 'POST', headers,
+      body: JSON.stringify(body), signal: AbortSignal.timeout(20000),
     });
-    if (!res.ok) {
-      console.log('[CUA brain] API status', res.status);
+    if (!response.ok) {
+      console.warn('[CUA brain] API status', response.status);
       return null;
     }
-    const data = await res.json();
-    if (data && data.step && data.step.action) {
-      return {
-        step: data.step,
-        confidence: data.confidence || null,
-        note: data.note || 'from external brain',
-      };
+    const data = await response.json();
+    let candidate = data;
+    if (deepseek) {
+      const content = data?.choices?.[0]?.message?.content;
+      candidate = typeof content === 'string' ? JSON.parse(content) : null;
     }
-    return null;
-  } catch (e) {
-    console.log('[CUA brain] call failed:', e.message);
+    const step = candidate?.step;
+    if (!step || typeof step.action !== 'string' ||
+        step.action.toLowerCase() !== next.action.toLowerCase()) return null;
+    return {
+      step,
+      confidence: Number.isFinite(candidate.confidence) ? candidate.confidence : null,
+      note: candidate.note || (deepseek ? 'DeepSeek semantic UI grounding' : 'external vision API'),
+      mode: deepseek ? 'deepseek-semantic' : 'external-vision',
+    };
+  } catch (error) {
+    console.warn('[CUA brain] call failed:', String(error.message || error));
     return null;
   }
 }
