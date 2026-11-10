@@ -1,167 +1,122 @@
-/* ============================================================
- * test-events-filter.cjs
- * Verify /api/events filtering with from/to epoch-ms query params
- * 使用 PORT=3999，互不干扰生产实例 (3210)
- * ============================================================ */
 'use strict';
-
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const vm = require('node:vm');
+const { spawn } = require('node:child_process');
 const PORT = 3999;
-const PUBLIC_DIR = path.join(__dirname, 'public');
 
-let started = false;
-let success = false;
-
-function sendRequest(method, path, body) {
-  return new Promise((resolve, reject) => {
-    const opts = {
-      hostname: '127.0.0.1',
-      port: PORT,
-      path: path,
-      method: method,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': body ? Buffer.byteLength(body) : 0,
-      },
-    };
-    const req = http.request(opts, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        resolve({ status: res.statusCode, body: data });
-      });
-    });
-    req.on('error', reject);
-    if (body) req.write(body);
-    req.end();
+async function startServer(dir) {
+  const child = spawn(process.execPath, [path.join(dir, 'server.js')], {
+    cwd: dir,
+    env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', SENTINEL_DISABLE: '1' },
+    stdio: ['ignore', 'pipe', 'pipe']
   });
+  try {
+    await new Promise((resolve, reject) => {
+      let settled = false, output = '';
+      const timeout = setTimeout(() => finish(new Error('SERVER_START_TIMEOUT: ' + output.slice(-700))), 15000);
+      function finish(error) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        error ? reject(error) : resolve();
+      }
+      child.once('error', finish);
+      child.once('exit', code => finish(new Error('SERVER_EXIT_' + code + ': ' + output.slice(-700))));
+      child.stdout.on('data', buf => {
+        output += String(buf);
+        if (output.includes('DATA SERVICE ONLINE')) finish();
+      });
+      child.stderr.on('data', buf => { output += String(buf); });
+    });
+  } catch (error) { child.kill(); throw error; }
+  return child;
+}
+async function request(route, method = 'GET', body) {
+  const resp = await fetch('http://127.0.0.1:' + PORT + route, {
+    method, signal: AbortSignal.timeout(5000),
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const text = await resp.text();
+  return { status: resp.status, body: text ? JSON.parse(text) : null };
+}
+async function apiChecks() {
+  for (const e of [{ ts: 0, kind: 'code', source: 'zero' },
+    { ts: 1000, kind: 'exec', source: 'middle' }, { ts: 2000, kind: 'task', source: 'late' }]) {
+    assert.equal((await request('/api/event', 'POST', e)).status, 204);
+  }
+  const zero = await request('/api/events?from=0&to=0');
+  assert.deepEqual(zero.body.events.map(e => e.ts), [0]);
+  assert.equal(zero.body.filteredCounts.code, 1);
+  assert.equal(zero.body.filteredCounts.exec, 0);
+  const range = await request('/api/events?from=0&to=1000');
+  assert.deepEqual(range.body.events.map(e => e.ts), [0, 1000]);
+  assert.equal(range.body.filteredCounts.exec, 1);
+  assert.equal(range.body.counts.task, 1);
+  for (const url of ['/api/events?from=abc', '/api/events?to=xyz',
+    '/api/events?from=&to=1', '/api/events?from=2&to=1']) {
+    assert.equal((await request(url)).status, 400, url);
+  }
+  assert.equal((await request('/api/event', 'POST', { ts: 'bad' })).status, 400);
+  assert.equal((await request('/api/events')).body.events.length, 3);
+}
+async function browserChecks() {
+  const source = await fs.readFile(path.join(__dirname, 'public', 'app.js'), 'utf8');
+  const a = source.indexOf('/* ---------------- 事件范围过滤 ---------------- */');
+  const b = source.indexOf("$('filterBtn').addEventListener('click', applyEventFilter);", a);
+  assert.ok(a !== -1 && b > a);
+  const fields = new Map(Object.entries({
+    filterFrom: { value: 'bad' }, filterTo: { value: '' },
+    feedList: { innerHTML: '' }, cntCode: {}, cntExec: {}, cntScan: {}, cntErr: {}
+  }));
+  let calls = 0;
+  const alerts = [];
+  const context = {
+    $: id => fields.get(id), URLSearchParams, Promise, Number, String, Date,
+    console, KIND_ICON: {}, activity: { list: [] },
+    alert: text => alerts.push(text),
+    esc: text => String(text || ''),
+    pad: n => String(n).padStart(2, '0'),
+    fetch: async url => {
+      calls++;
+      const res = await request(url);
+      return { ok: res.status === 200, status: res.status, json: async () => res.body };
+    }
+  };
+  vm.runInNewContext(source.slice(a, b), context, { filename: 'app.js/filter' });
+  assert.equal(await vm.runInNewContext('applyEventFilter()', context), false);
+  assert.equal(calls, 0);
+  assert.equal(alerts.length, 1);
+  fields.get('filterFrom').value = '0';
+  fields.get('filterTo').value = '0';
+  assert.equal(await vm.runInNewContext('applyEventFilter()', context), true);
+  assert.equal(context.activity.list.length, 1);
+  assert.equal(context.activity.list[0].ts, 0);
+  assert.equal(fields.get('cntCode').textContent, 1);
+  assert.equal(fields.get('cntExec').textContent, 0);
+  assert.ok(fields.get('feedList').innerHTML.includes('zero'));
 }
 
 async function main() {
-  // Start server on PORT=3999 (modify server.js PORT temporarily)
-  // We'll use the existing server but on a different port by running a subprocess
-  // Actually, let's just test against a running instance on 3999
-
-  // Step 1: Start a temporary server on port 3999
-  // We'll copy server.js logic but on 3999
-  // Actually easiest: use the existing node server but override PORT
-  // Let's start it as a child process
-
-  const serverJs = path.join(__dirname, 'server.js');
-  const child = require('child_process').fork(serverJs, [], {
-    env: { ...process.env, PORT: '3999' },
-    silent: true,
-  });
-
-  // Wait for server to start
-  await new Promise((r) => setTimeout(r, 500));
-
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-monitor-test-'));
+  let child;
   try {
-    // Step 2: POST three events with different ts values
-    const events = [
-      { ts: Date.now() - 100000, source: 'test1', kind: 'tool', target: 'file1.js' },
-      { ts: Date.now() - 50000, source: 'test2', kind: 'tool', target: 'file2.js' },
-      { ts: Date.now() + 50000, source: 'test3', kind: 'tool', target: 'file3.js' },
-    ];
-
-    // POST each event
-    for (const ev of events) {
-      await sendRequest('POST', '/api/event', JSON.stringify(ev));
-    }
-
-    // Step 3: Test range query - query events within [now-110000, now-40000]
-    // event1: now-100000 should be in range
-    // event2: now-50000 should be in range
-    // event3: now+50000 should NOT be in range
-    const rangeRes = await sendRequest('GET', '/api/events?from=' + (Date.now() - 110000) + '&to=' + (Date.now() - 40000));
-    const rangeData = JSON.parse(rangeRes.body);
-    const rangeEvents = rangeData.events || [];
-
-    console.log(`范围查询: 返回 ${rangeEvents.length} 条事件 (预期 2 条: event1&2 在范围内, event3 超出)`);
-
-    if (rangeEvents.length !== 2) {
-      console.error(`FAIL: expected 2 events in range, got ${rangeEvents.length}`);
-      process.exit(1);
-    }
-
-    // Verify ts values are within range
-    const ts1 = events[0].ts;
-    const ts2 = events[1].ts;
-    const ts3 = events[2].ts;
-
-    const inRange1 = rangeEvents.some((e) => e.ts === ts1);
-    const inRange2 = rangeEvents.some((e) => e.ts === ts2);
-    const notInRange3 = !rangeEvents.some((e) => e.ts === ts3);
-
-    if (!inRange1) { console.error('FAIL: event1 (oldest) should be in range'); process.exit(1); }
-    if (!inRange2) { console.error('FAIL: event2 (middle) should be in range'); process.exit(1); }
-    if (!notInRange3) { console.error('FAIL: event3 (newest, outside range) should NOT be in range'); process.exit(1); }
-
-    // Step 4: Test 400 when from is not a valid number
-    const badFromRes = await sendRequest('GET', '/api/events?from=abc&to=' + (Date.now() + 100000));
-    const badFromData = JSON.parse(badFromRes.body);
-    console.log(`非法 from: 返回状态 ${badFromRes.status} (预期 400)`);
-
-    if (badFromRes.status !== 400) {
-      console.error(`FAIL: expected 400 for invalid from=abc, got ${badFromRes.status}`);
-      process.exit(1);
-    }
-    if (!badFromData.error) {
-      console.error('FAIL: expected error message in response');
-      process.exit(1);
-    }
-
-    // Step 5: Test 400 when to is not a valid number
-    const badToRes = await sendRequest('GET', '/api/events?from=100&to=xyz');
-    const badToData = JSON.parse(badToRes.body);
-    console.log(`非法 to: 返回状态 ${badToRes.status} (预期 400)`);
-
-    if (badToRes.status !== 400) {
-      console.error(`FAIL: expected 400 for invalid to=xyz, got ${badToRes.status}`);
-      process.exit(1);
-    }
-    if (!badToData.error) {
-      console.error('FAIL: expected error message in response');
-      process.exit(1);
-    }
-
-    // Step 6: Test full range when no from/to - should return all events (existing behavior)
-    const fullRes = await sendRequest('GET', '/api/events');
-    const fullData = JSON.parse(fullRes.body);
-    const fullEvents = fullData.events || [];
-
-    console.log(`全量查询: 返回 ${fullEvents.length} 条事件 (预期至少 3 条)`);
-
-    if (fullEvents.length < 3) {
-      console.error(`FAIL: expected at least 3 events without filter, got ${fullEvents.length}`);
-      process.exit(1);
-    }
-
-    // Verify all 3 events are present in full range
-    const allPresent = events.every((ev) => fullEvents.some((e) => e.ts === ev.ts));
-    if (!allPresent) {
-      console.error('FAIL: not all 3 events present in full range');
-      process.exit(1);
-    }
-
-    console.log('所有断言通过!');
-    success = true;
-  } catch (err) {
-    console.error('测试过程出错:', err);
-    process.exit(1);
+    await fs.copyFile(path.join(__dirname, 'server.js'), path.join(dir, 'server.js'));
+    child = await startServer(dir);
+    await apiChecks();
+    await browserChecks();
+    console.log('PASS: API zero timestamp, ranges, counts, actual browser filter');
   } finally {
-    // Kill the child server
-    if (child && !success) {
+    if (child && child.exitCode === null) {
+      const closed = new Promise(resolve => child.once('close', resolve));
       child.kill();
+      await Promise.race([closed, new Promise(resolve => setTimeout(resolve, 5000))]);
     }
-    process.exit(0);
+    // Windows may retain the child image/file handle briefly after 'exit'.
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 12, retryDelay: 250 });
   }
 }
-
-main().catch((e) => {
-  console.error('致命错误:', e);
-  process.exit(1);
-});
+main().catch(e => { console.error('FAIL:', e.stack || e); process.exitCode = 1; });

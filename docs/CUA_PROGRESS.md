@@ -1,3 +1,15 @@
+## 2026-11-10 · PR #3 复杂阻塞修复（分支未合并）
+
+本轮按真实代码缺口而非论文主题推进：完成桌面写前检查点/状态核验/观测恢复、模型计划与 UIA 定位一致性、DeepSeek 语义决策、单文件编程—测试—报错回流闭环、MCP stdio 工具接线、FreeCAD 路由修复、监控事件筛选和假绿测试清理。
+
+**证据**：PR #3 的真实代码差异、`.github/workflows/cua-coding-loop.yml` Windows/Ubuntu 回归、`node --test cua/tests/*.test.cjs`、`node test-events-filter.cjs`。
+
+**严格限制**：CI ≠ 用户 Windows 真机；本地模拟 DeepSeek ≠ 已打通真实额度；MCP 服务器可调用 ≠ 已注册正式 DSH；FreeCAD 参数和脚本静态检查 ≠ 真正生成并独立重开 CAD 文件。
+
+完整剩余项及可复现口令：`docs/CUA_UNFINISHED_AUDIT_2026-11-10.md`。
+
+---
+
 # CUA 进展日志（可追溯）
 
 每次改动都在此记录：做了什么、改了哪里、证据是什么、下一步是什么。

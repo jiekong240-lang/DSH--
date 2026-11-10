@@ -140,7 +140,14 @@ function prepareVisionPayload(observation, extra = {}) {
     screenshotError: observation.screenshotError || null,
     focus: observation.focus || null,
     accessibilitySummary: observation.accessibility && observation.accessibility.note,
-    agentDesktopSummary: observation.agentDesktop ? observation.agentDesktop.slice(0, 2000) : null,
+    accessibility: observation.accessibility ? {
+      focused: observation.accessibility.focused || null,
+      children: (observation.accessibility.children || []).slice(0, 30),
+    } : null,
+    agentDesktopSummary: observation.agentDesktop ? observation.agentDesktop.slice(0, 4000) : null,
+    windows: (observation.windows || []).slice(0, 30).map(w => ({
+      title: w.title, process: w.process,
+    })),
     windowsCount: (observation.windows || []).length,
     channels: observation.channels || {},
     ...extra,

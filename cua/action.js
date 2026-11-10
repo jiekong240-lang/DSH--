@@ -51,20 +51,31 @@ function maybeRecord(type, action, extra = {}) {
 }
 
 async function mouseMove(x, y) {
-  const nx = Math.round(Number(x));
-  const ny = Math.round(Number(y));
+  if (typeof x !== 'number' || typeof y !== 'number' ||
+      !Number.isFinite(x) || !Number.isFinite(y)) {
+    return { ok: false, error: 'invalid coordinates' };
+  }
+  const nx = Math.round(x);
+  const ny = Math.round(y);
   if (!Number.isFinite(nx) || !Number.isFinite(ny)) {
     return { ok: false, error: 'invalid coordinates' };
   }
   const cmd = `${MOUSE_EVENT_HELPER}
-[Input]::SetCursorPos(${nx}, ${ny})`;
+if (-not [Input]::SetCursorPos(${nx}, ${ny})) { throw 'SetCursorPos failed' }`;
   const r = await runPowerShell(cmd);
   if (r.ok) maybeRecord('mouse', 'move', { x: nx, y: ny });
   return r;
 }
 
-async function mouseClick(button = 'left', x, y) {
-  if (x !== undefined && y !== undefined) {
+async function mouseClick(button = 'left', x, y, useCurrentCursor = false) {
+  if (!['left', 'right'].includes(button)) return { ok: false, error: 'invalid mouse button' };
+  if (!useCurrentCursor && (!Number.isFinite(x) || !Number.isFinite(y))) {
+    return { ok: false, error: 'click requires explicit coordinates' };
+  }
+  if (x !== undefined || y !== undefined) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return { ok: false, error: 'invalid click coordinates' };
+    }
     const moved = await mouseMove(x, y);
     if (!moved.ok) return moved;
   }
@@ -79,11 +90,20 @@ Start-Sleep -Milliseconds 30
   return r;
 }
 
+function toSendKeysLiteral(value) {
+  // WinForms SendKeys treats + ^ % ~ ( ) { } as keyboard shortcuts.
+  return value.replace(/[+^%~(){}]/g, char => '{' + char + '}');
+}
+
 async function typeText(text) {
   if (typeof text !== 'string' || text.length === 0) {
     return { ok: false, error: 'empty text' };
   }
-  const safe = text.replace(/'/g, "''").slice(0, 500);
+  if (text.length > 500) return { ok: false, error: 'text too long for SendKeys channel' };
+  if (/[\u0000-\u001f\u007f]/.test(text)) {
+    return { ok: false, error: 'control characters require semantic typing channel' };
+  }
+  const safe = toSendKeysLiteral(text).replace(/'/g, "''");
   const cmd = `Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${safe}')`;
   const r = await runPowerShell(cmd);
   if (r.ok) maybeRecord('key', 'type', { length: text.length });
@@ -107,11 +127,11 @@ async function execute(decision) {
   if (action.startsWith('fc-') || action === 'freecad' || action === 'fc-box' || action === 'fc-step') {
     let r;
     if (action === 'fc-box' || action === 'fc-create-box') {
-      r = await freecad.createVerifiedBox(step.length || 50, step.width || 30, step.height || 20, step.outPath);
+      r = await freecad.createVerifiedBox({ length: step.length ?? 50, width: step.width ?? 30, height: step.height ?? 20, outPath: step.outPath });
     } else if (action === 'fc-script' || action === 'fc-run') {
       r = await freecad.runScript(step.scriptPath || step.target);
     } else if (action === 'fc-step' || action === 'fc-export-step') {
-      r = await freecad.exportStep(step.fcstd || step.target, step.outPath);
+      r = await freecad.exportStep({ fcstdPath: step.fcstd || step.target, outPath: step.outPath });
     } else {
       r = await freecad.runScript(step.scriptPath || step.target);
     }
@@ -125,7 +145,7 @@ async function execute(decision) {
       return { ok: r.ok, action, note: 'mouseMove', error: r.error };
     }
     if (action === 'click') {
-      const r = await mouseClick(step.button || 'left', step.x, step.y);
+      const r = await mouseClick(step.button || 'left', step.x, step.y, step.useCurrentCursor === true);
       return { ok: r.ok, action, note: 'mouseClick', error: r.error };
     }
     if (action === 'type' && step.text) {
@@ -146,4 +166,4 @@ async function execute(decision) {
   }
 }
 
-module.exports = { execute, mouseMove, mouseClick, typeText, agentDesktop, freecad };
+module.exports = { execute, mouseMove, mouseClick, typeText, toSendKeysLiteral, agentDesktop, freecad };

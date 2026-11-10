@@ -13,7 +13,8 @@ const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const FREECAD_CMD = 'C:\\Users\\64562\\AppData\\Local\\Programs\\FreeCAD 1.1\\bin\\freecadcmd.exe';
+const DEFAULT_FREECAD_CMD = 'C:\\Users\\64562\\AppData\\Local\\Programs\\FreeCAD 1.1\\bin\\freecadcmd.exe';
+function freecadCommand() { return process.env.FREECAD_CMD || DEFAULT_FREECAD_CMD; }
 const LOG_DIR = path.join(__dirname, '..', 'logs');
 
 function ensureLogDir() {
@@ -22,11 +23,12 @@ function ensureLogDir() {
 
 function runFreeCADScript(scriptContent, timeoutMs = 180000) {
   return new Promise((resolve) => {
-    if (!fs.existsSync(FREECAD_CMD)) {
+    const command = freecadCommand();
+    if (path.isAbsolute(command) && !fs.existsSync(command)) {
       return resolve({
         ok: false,
         error: 'freecadcmd_not_found',
-        detail: FREECAD_CMD,
+        detail: command,
       });
     }
 
@@ -40,7 +42,7 @@ function runFreeCADScript(scriptContent, timeoutMs = 180000) {
     }
 
     execFile(
-      FREECAD_CMD,
+      command,
       [scriptPath],
       { timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
       (err, stdout, stderr) => {
@@ -54,8 +56,8 @@ function runFreeCADScript(scriptContent, timeoutMs = 180000) {
         } catch { /* ignore parse error */ }
 
         const result = {
-          ok: !err && metrics && metrics.ok === true,
-          error: err ? 'process_error' : (metrics && metrics.ok === false ? metrics.reason : null),
+          ok: !err && !!metrics && metrics.ok === true,
+          error: err ? 'process_error' : (!metrics ? 'metrics_missing' : (metrics.ok === false ? metrics.reason || 'validation_failed' : null)),
           detail: err ? String(err.message || err).slice(0, 400) : (metrics && metrics.reason),
           metrics,
           stdout: out.trim().slice(0, 2000),
@@ -78,6 +80,13 @@ const freecadTool = {
   description: 'Quality-first FreeCAD parametric CAD (structured validation)',
 
   async createVerifiedBox({ length = 50, width = 30, height = 20, outPath } = {}) {
+    const dimensions = [length, width, height];
+    if (!dimensions.every(n => typeof n === 'number' && Number.isFinite(n) && n > 0 && n < 100000)) {
+      return { ok: false, error: 'invalid_dimensions' };
+    }
+    if (outPath !== undefined && (typeof outPath !== 'string' || !path.isAbsolute(outPath))) {
+      return { ok: false, error: 'invalid_output_path' };
+    }
     const expected = length * width * height;
     const script = `
 import FreeCAD as App
@@ -102,7 +111,7 @@ if not valid: reason = "shape_invalid"
 elif solids != 1: reason = f"solid_count_{solids}"
 elif abs(vol - ${expected}) >= 0.05: reason = f"volume_{vol}_expected_${expected}"
 
-${outPath ? `if ok: doc.saveAs(r"${outPath.replace(/\\/g, '\\\\')}")` : ''}
+${outPath ? `if ok: doc.saveAs(${JSON.stringify(outPath)})` : ''}
 
 print("__METRICS__")
 print(json.dumps({
@@ -119,9 +128,29 @@ print("__END__")
     return runFreeCADScript(script);
   },
 
-  async exportStep({ fcstdPath, outPath }) {
-    if (!fcstdPath || !outPath) {
-      return { ok: false, error: 'missing_path' };
+  async runScript(scriptPath) {
+    if (typeof scriptPath !== 'string' || !path.isAbsolute(scriptPath) ||
+        path.extname(scriptPath).toLowerCase() !== '.py') {
+      return { ok: false, error: 'invalid_script_path' };
+    }
+    let content;
+    try {
+      const stat = fs.statSync(scriptPath);
+      if (!stat.isFile() || stat.size > 1024 * 1024) return { ok: false, error: 'invalid_script_size' };
+      content = fs.readFileSync(scriptPath, 'utf8');
+    } catch (error) {
+      return { ok: false, error: 'script_read_failed', detail: String(error.message || error) };
+    }
+    // A custom CAD script must provide the metrics marker; process exit alone
+    // is not evidence of a valid model or written artifact.
+    return runFreeCADScript(content);
+  },
+
+  async exportStep({ fcstdPath, outPath } = {}) {
+    if (!fcstdPath || !outPath) return { ok: false, error: 'missing_path' };
+    if (typeof fcstdPath !== 'string' || typeof outPath !== 'string' ||
+        !path.isAbsolute(fcstdPath) || !path.isAbsolute(outPath)) {
+      return { ok: false, error: 'invalid_path' };
     }
     const script = `
 import FreeCAD as App
@@ -129,7 +158,7 @@ import Part
 import json
 import os
 
-doc = App.openDocument(r"${fcstdPath.replace(/\\/g, '\\\\')}")
+doc = App.openDocument(${JSON.stringify(fcstdPath)})
 doc.recompute()
 
 candidates = [o for o in doc.Objects if hasattr(o, "Shape") and o.Shape.Solids]
@@ -148,8 +177,8 @@ ok = valid and vol > 1e-3
 reason = None if ok else ("invalid" if not valid else "zero_volume")
 
 if ok:
-    shape.exportStep(r"${outPath.replace(/\\/g, '\\\\')}")
-    ok = os.path.exists(r"${outPath.replace(/\\/g, '\\\\')}")
+    shape.exportStep(${JSON.stringify(outPath)})
+    ok = os.path.exists(${JSON.stringify(outPath)})
     if not ok: reason = "step_not_written"
 
 print("__METRICS__")
