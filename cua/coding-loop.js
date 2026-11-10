@@ -265,7 +265,7 @@ async function runCodingLoop(options) {
     let patch;
     try {
       patch = await model([
-      { role: 'system', content: 'You are a coding agent. Return JSON with either {path,oldText,newText,reason} for a legacy edit or {patches:[...],reason} with 1-5 operations: {op:'replace',path,oldText,newText} on existing files, or {op:'create',path,content} for a new source file in an existing directory. Every oldText must match exactly once. Never edit tests, fixtures, verifier, build configuration or verification command. Never claim success. No shell commands.' },
+      { role: 'system', content: 'You are a coding agent. Return JSON with either {path,oldText,newText,reason} for a legacy edit or {patches:[...],reason} with 1-5 operations: {op:replace,path,oldText,newText} on existing files, or {op:create,path,content} for a new source file in an existing directory. Every oldText must match exactly once. Never edit tests, fixtures, verifier, build configuration or verification command. Never claim success. No shell commands.' },
       { role: 'user', content: JSON.stringify({ goal, files: sources, round: index + 1, inventory: currentFiles, previousVerification: lastResult, verificationCommand: verifyCommand }) }
       ], options.modelConfig);
     } catch (error) {
