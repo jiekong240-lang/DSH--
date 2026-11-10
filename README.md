@@ -25,6 +25,17 @@
 - CUA 瞭望哨（cua-lookout.cjs）：红绿判定 + 可选截图佐证
 - 大量诊断、修补、验证脚本
 
+## CUA 历史研究知识库（开发前必读）
+
+我们已经将多轮本地 CUA 技术讨论提炼为一份**可执行工程手册**，供 DeepSeek Harness、Grok Bot 看护者和 WorkBuddy 等编程 Agent 在开始开发前查阅：
+
+- **[CUA 历史对话工程知识手册（2026-11-10）](docs/knowledge/CUA_CONVERSATION_ENGINEERING_HANDBOOK_2026-11-10.md)**：DeepSeek Harness + DeepSeek API、真实仓库理解→小步编码→运行测试→按报错修复→回归→独立交付；TS16 规划/重规划、TS18 诚实校准、TS19 人工确认、TS20 持久化与幂等；Grok Bot 看护式协作、论文复现与 FreeCAD/PPT 等子项目验收。
+- **[公开论文总索引](docs/papers/INDEX.md)**：研究来源、公开链接与对应工程缺口。
+- **[CUA 前沿资料与模块映射](docs/references/CUA_FRONTIER_REFERENCES.md)**：观察、动作、监督、规划、经验学习等方向的参考资料。
+- **[CUA 架构](docs/CUA_ARCHITECTURE.md)**、**[开发进度](docs/CUA_PROGRESS.md)**：本仓代码结构与阶段记录。
+
+**开发纪律**：先核对当前仓库 SHA、工具接口和真实运行环境，再实施手册中的方案；不能把对话纪要、论文、Mock 测试或未合并 PR 当作已经完成的产品。只有真实产物经过独立验收，才能报告为 `Verified`。
+
 ## CUA 本体核心思路（必须坚持）
 
 1. **真实操作，不是建议**
