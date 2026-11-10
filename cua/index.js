@@ -20,17 +20,27 @@ const READ_ACTIONS = new Set(['observe', 'list', 'snapshot', 'ad-snapshot']);
 // The model may supply grounding, not rewrite the task contract. In particular,
 // the model must not substitute a different action/text/expected postcondition,
 // then cause advanceTask() to consume an unrelated planned step.
-function mergeBrainGrounding(planned, proposed) {
+function mergeBrainGrounding(planned, proposed, observation = {}) {
   if (!planned || !proposed || typeof proposed !== 'object') return planned;
   if (String(planned.action || '').toLowerCase() !== String(proposed.action || '').toLowerCase()) return planned;
   const grounded = { ...planned };
-  if (planned.x == null && planned.y == null &&
+  // The model's guessed pixels are not enough to ground a click.
+  // For targetName, resolveStepCoordinates must derive coordinates from
+  // exactly one real UI Automation element. Without targetName, retain only
+  // coordinates the task author actually supplied.
+  if (!planned.ref && typeof proposed.ref === 'string' && proposed.ref.length <= 100) {
+    const observed = String(observation.agentDesktop || '');
+    const escaped = proposed.ref.replace(/[.*+?^${}()|[]\]/g, '\  if (planned.x == null && planned.y == null &&
       Number.isFinite(proposed.x) && Number.isFinite(proposed.y)) {
     grounded.x = Math.round(proposed.x);
     grounded.y = Math.round(proposed.y);
   }
   if (!planned.ref && typeof proposed.ref === 'string' && proposed.ref.length <= 100) {
     grounded.ref = proposed.ref;
+  }');
+    if (new RegExp('(?:^|\\s)' + escaped + '(?=\\s|$)').test(observed)) {
+      grounded.ref = proposed.ref;
+    }
   }
   // Preserve planned action, text, target, and expect. All are authoritative.
   return grounded;
@@ -95,7 +105,7 @@ async function runOnce(task, ports = {}) {
   let decision = decide(task, observation);
   if (!decision) return { done: true, reason: 'no more steps', observation };
   if (suggested && suggested.step) {
-    decision = { ...decision, step: mergeBrainGrounding(decision.step, suggested.step), fromBrain: true };
+    decision = { ...decision, step: mergeBrainGrounding(decision.step, suggested.step, observation), fromBrain: true };
   }
 
   if (decision.step) {

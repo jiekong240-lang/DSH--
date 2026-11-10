@@ -147,7 +147,29 @@ test('a grounded coordinate cannot alter the planned expected result', () => {
   const grounded = mergeBrainGrounding(planned, {
     action: 'click', x: 20, y: 30, expect: { windowTitleIncludes: 'Wrong window' }
   });
-  assert.equal(grounded.x, 20);
-  assert.equal(grounded.y, 30);
+  assert.equal(grounded.x, undefined, 'model-only coordinates have no trusted UIA evidence');
+  assert.equal(grounded.y, undefined);
   assert.deepEqual(grounded.expect, expected);
+});
+
+
+test('model-proposed desktop ref is rejected unless actually in observed snapshot', () => {
+  const planned = { action: 'ad-click', target: 'Save' };
+  assert.equal(mergeBrainGrounding(planned, { action: 'ad-click', ref: '#42' }, { agentDesktop: '#1 Save' }).ref, undefined);
+  assert.equal(mergeBrainGrounding(planned, { action: 'ad-click', ref: '#1' }, { agentDesktop: '#1 Save' }).ref, '#1');
+});
+
+test('unverified pixel guesses never bypass targetName resolution', async () => {
+  let sent = 0;
+  const result = await runOnce({ id: 'target', steps: [
+    { action: 'click', targetName: 'Save', expect: { focusNameIncludes: 'Editor' } }
+  ] }, {
+    observe: async () => obs,
+    suggestFromVision: async () => ({ step: { action: 'click', x: 777, y: 888 } }),
+    findElementsByName: async () => ({ matches: [] }),
+    checkGate: () => ({ allow: true }),
+    execute: async () => { sent++; return { ok: true }; },
+  });
+  assert.equal(result.reason, 'TARGET_UNRESOLVED');
+  assert.equal(sent, 0);
 });
