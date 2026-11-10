@@ -17,32 +17,52 @@ const { verifyStep } = require('./step-verify');
 const MAX_STEPS = 20;
 const READ_ACTIONS = new Set(['observe', 'list', 'snapshot', 'ad-snapshot']);
 
-async function resolveStepCoordinates(step, observation) {
+// The model may supply grounding, not rewrite the task contract. In particular,
+// the model must not substitute a different action/text/expected postcondition,
+// then cause advanceTask() to consume an unrelated planned step.
+function mergeBrainGrounding(planned, proposed) {
+  if (!planned || !proposed || typeof proposed !== 'object') return planned;
+  if (String(planned.action || '').toLowerCase() !== String(proposed.action || '').toLowerCase()) return planned;
+  const grounded = { ...planned };
+  if (planned.x == null && planned.y == null &&
+      Number.isFinite(proposed.x) && Number.isFinite(proposed.y)) {
+    grounded.x = Math.round(proposed.x);
+    grounded.y = Math.round(proposed.y);
+  }
+  if (!planned.ref && typeof proposed.ref === 'string' && proposed.ref.length <= 100) {
+    grounded.ref = proposed.ref;
+  }
+  // Preserve planned action, text, target, and expect. All are authoritative.
+  return grounded;
+}
+
+async function resolveStepCoordinates(step, observation, locator = findElementsByName) {
   if (!step || step.x != null || !step.targetName) return step;
   // 优先尝试 agent-desktop @ref（如果观察里已有快照）
-  if (observation.agentDesktop && step.targetName) {
-    // 简单名称匹配提示（实际解析可后续加强）
-    step.preferAgentDesktop = true;
-  }
+  const grounded = { ...step };
+  if (observation?.agentDesktop && step.targetName) grounded.preferAgentDesktop = true;
   try {
-    const found = await findElementsByName(step.targetName, 3);
-    if (found.matches && found.matches.length > 0) {
-      const el = found.matches[0];
-      const rect = parseBoundingRectangle(el.BoundingRectangle);
-      if (rect) {
-        return {
-          ...step,
-          x: rect.centerX,
-          y: rect.centerY,
-          resolvedFrom: el.Name,
-          resolvedNote: found.note,
-        };
-      }
+    const found = await locator(step.targetName, 3);
+    const matches = Array.isArray(found?.matches) ? found.matches : [];
+    const exact = matches.filter(el => String(el.Name || '').trim().toLowerCase() ===
+      String(step.targetName).trim().toLowerCase());
+    const candidates = exact.length ? exact : matches;
+    // Never click the first element of an ambiguous result set.
+    if (candidates.length !== 1) return grounded;
+    const rect = parseBoundingRectangle(candidates[0].BoundingRectangle);
+    if (rect) {
+      return {
+        ...grounded,
+        x: rect.centerX,
+        y: rect.centerY,
+        resolvedFrom: candidates[0].Name,
+        resolvedNote: found.note,
+      };
     }
   } catch (e) {
     console.log('[CUA] resolve targetName failed:', e.message);
   }
-  return step;
+  return grounded;
 }
 
 async function runOnce(task, ports = {}) {
@@ -73,13 +93,19 @@ async function runOnce(task, ports = {}) {
   }
 
   let decision = decide(task, observation);
-  if (suggested && suggested.step) {
-    decision = { ...decision, step: suggested.step, fromBrain: true };
-  }
   if (!decision) return { done: true, reason: 'no more steps', observation };
+  if (suggested && suggested.step) {
+    decision = { ...decision, step: mergeBrainGrounding(decision.step, suggested.step), fromBrain: true };
+  }
 
   if (decision.step) {
-    decision.step = await resolveStepCoordinates(decision.step, observation);
+    const locator = ports.findElementsByName || findElementsByName;
+    decision.step = await resolveStepCoordinates(decision.step, observation, locator);
+    const action = String(decision.step.action || '').toLowerCase();
+    if (decision.step.targetName && ['click', 'move', 'mousemove'].includes(action) &&
+        (!Number.isFinite(decision.step.x) || !Number.isFinite(decision.step.y))) {
+      return { done: true, reason: 'TARGET_UNRESOLVED', observation };
+    }
   }
 
   const gate = gateNow(decision);
@@ -188,4 +214,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { runOnce };
+module.exports = { runOnce, mergeBrainGrounding, resolveStepCoordinates };

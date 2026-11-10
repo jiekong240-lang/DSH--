@@ -6,7 +6,7 @@ const fsp = fs.promises;
 const os = require('node:os');
 const path = require('node:path');
 const { createTaskStore } = require('../task');
-const { runOnce } = require('../index');
+const { runOnce, mergeBrainGrounding } = require('../index');
 
 async function fixture(fn) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cua-task-state-'));
@@ -104,3 +104,50 @@ test('driver ok with mismatched postcondition stays pending and blocks replay', 
   assert.equal(second.reason, 'PENDING_ACTION_RECONCILIATION');
   assert.equal(sends, 1);
 }));
+
+test('brain cannot change planned action, text or verification conditions', () => {
+  const planned = { action: 'type', text: 'EXPECTED', expect: { focusNameIncludes: 'Editor' } };
+  const proposed = { action: 'type', text: 'WRONG', expect: { focusNameIncludes: 'Other' } };
+  assert.deepEqual(mergeBrainGrounding(planned, proposed), planned);
+  assert.deepEqual(mergeBrainGrounding(planned, { action: 'delete', target: 'irreversible' }), planned);
+});
+
+test('brain proposal cannot cause an action after the plan is complete', async () => {
+  let actions = 0;
+  const result = await runOnce({ id: 'done', steps: [] }, {
+    observe: async () => obs,
+    suggestFromVision: async () => ({ step: { action: 'click', x: 5, y: 6 } }),
+    execute: async () => { actions++; return { ok: true }; },
+  });
+  assert.equal(result.reason, 'no more steps');
+  assert.equal(actions, 0);
+});
+
+test('unresolved targetName cannot click at an old mouse coordinate', async () => {
+  let actions = 0;
+  const result = await runOnce({ id: 'target', steps: [
+    { action: 'click', targetName: 'Save', expect: { focusNameIncludes: 'Editor' } }
+  ] }, {
+    observe: async () => obs,
+    suggestFromVision: async () => null,
+    findElementsByName: async () => ({ matches: [
+      { Name: 'Save', BoundingRectangle: 'X=20,Y=20,Width=40,Height=25' },
+      { Name: 'Save', BoundingRectangle: 'X=80,Y=20,Width=40,Height=25' },
+    ] }),
+    checkGate: () => ({ allow: true }),
+    execute: async () => { actions++; return { ok: true }; }
+  });
+  assert.equal(result.reason, 'TARGET_UNRESOLVED');
+  assert.equal(actions, 0);
+});
+
+test('a grounded coordinate cannot alter the planned expected result', () => {
+  const expected = { windowTitleIncludes: 'Target window' };
+  const planned = { action: 'click', targetName: 'Save', expect: expected };
+  const grounded = mergeBrainGrounding(planned, {
+    action: 'click', x: 20, y: 30, expect: { windowTitleIncludes: 'Wrong window' }
+  });
+  assert.equal(grounded.x, 20);
+  assert.equal(grounded.y, 30);
+  assert.deepEqual(grounded.expect, expected);
+});
