@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { runCodingLoop, runCommand, relativeFile } = require('../coding-loop');
+const { runCodingLoop, runCommand, relativeFile, isVerificationArtifact } = require('../coding-loop');
 const { parseArgs } = require('../code-task');
 async function fixture(fn) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cua-code-'));
@@ -58,3 +58,47 @@ test('path traversal and test manipulation are rejected', async () => {
   assert.throws(() => relativeFile('a/../outside.js'), /INVALID_PATH/);
   assert.deepEqual(parseArgs(['--project', '.', '--goal', 'fix', '--verify', 'node', '--test']).verifyCommand, ['node', '--test']);
 });
+
+test('baseline already passing is not mislabelled repaired', async () => fixture(async dir => {
+  await fs.writeFile(path.join(dir, 'app.js'), 'const n = 1;\n');
+  let called = false;
+  const out = await runCodingLoop({ project: dir, goal: 'fix a bug', verifyCommand: [process.execPath, '--version'],
+    model: async () => { called = true; throw Error('unexpected model call'); } });
+  assert.equal(out.status, 'baseline-passing');
+  assert.equal(called, false);
+}));
+
+test('cannot pass by rewriting verification script', async () => fixture(async dir => {
+  await fs.writeFile(path.join(dir, 'check.cjs'), 'process.exit(1)\n');
+  const out = await runCodingLoop({ project: dir, goal: 'fix a bug', maxRounds: 1,
+    verifyCommand: [process.execPath, 'check.cjs'],
+    model: async () => ({ path: 'check.cjs', oldText: 'exit(1)', newText: 'exit(0)' }) });
+  assert.equal(out.status, 'not-verified');
+  assert.equal(out.rounds[0].error, 'TEST_EDIT_REFUSED');
+  assert.equal(await fs.readFile(path.join(dir, 'check.cjs'), 'utf8'), 'process.exit(1)\n');
+}));
+
+test('detects more test and config artifacts', () => {
+  assert.equal(isVerificationArtifact('src/tests/app.js'), true);
+  assert.equal(isVerificationArtifact('src/verify.py'), true);
+  assert.equal(isVerificationArtifact('package.json'), true);
+  assert.equal(isVerificationArtifact('src/app.js', ['node', 'check.cjs']), false);
+});
+
+test('API failure persists an explicit not-verified result', async () => fixture(async dir => {
+  await fs.writeFile(path.join(dir, 'app.js'), 'const n=1;\n');
+  const out = await runCodingLoop({ project: dir, goal: 'fix', verifyCommand: ['fake'],
+    runner: async () => ({ ok: false, code: 1 }),
+    model: async () => { throw Error('HTTP 429'); } });
+  assert.equal(out.status, 'not-verified');
+  assert.equal(out.rounds[0].outcome, 'model-error');
+  const saved = JSON.parse(await fs.readFile(path.join(dir, '.cua-coding-runs/latest/RESULT.json')));
+  assert.equal(saved.status, 'not-verified');
+}));
+
+test('hung verification child is stopped and reported as timeout', async () => fixture(async dir => {
+  await fs.writeFile(path.join(dir, 'hang.cjs'), 'setInterval(() => {}, 1000)\n');
+  const out = await runCommand(dir, [process.execPath, 'hang.cjs'], { timeoutMs: 150 });
+  assert.equal(out.ok, false);
+  assert.equal(out.timedOut, true);
+}));

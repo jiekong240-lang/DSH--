@@ -10,6 +10,16 @@ const SKIP = new Set(['.git', 'node_modules', '.venv', 'venv', 'dist', 'build', 
 const EXT = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.py', '.json', '.md', '.css', '.html', '.yml', '.yaml']);
 const sha = text => crypto.createHash('sha256').update(text).digest('hex');
 
+function isVerificationArtifact(rel, command = []) {
+  const filename = path.posix.basename(rel).toLowerCase();
+  const directory = rel.toLowerCase().split('/');
+  if (directory.some(x => /^(?:test|tests|__tests__|spec|specs|testkit|fixture|fixtures|e2e)$/i.test(x))) return true;
+  if (/(?:^|[._-])(?:test|spec|check|verify|assert|fixture|jest|vitest|mocha|playwright|eslint|prettier)(?:[._-]|$)/i.test(filename)) return true;
+  if (/^(?:package|tsconfig|jsconfig|pyproject|pytest|tox|jest|vitest|playwright|eslint|prettier|babel|vite|webpack|rollup|biome)(?:[.-]|$)/i.test(filename)) return true;
+  return command.some(x => typeof x === 'string' &&
+    x.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase() === rel.toLowerCase());
+}
+
 function relativeFile(value) {
   if (typeof value !== 'string' || !value || value.includes('\0') || path.isAbsolute(value) || /^[a-z]:/i.test(value)) throw new Error('INVALID_PATH');
   const parts = value.replace(/\\/g, '/').split('/');
@@ -71,18 +81,37 @@ async function deepseek(messages, config = {}) {
 async function runCommand(project, args, options = {}) {
   if (!Array.isArray(args) || !args.length || !args.every(a => typeof a === 'string')) throw new Error('VERIFY_COMMAND_REQUIRED');
   return new Promise(resolve => {
-    const child = spawn(args[0], args.slice(1), { cwd: project, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '', timedOut = false, settled = false;
-    child.stdout.on('data', d => { stdout = (stdout + String(d)).slice(-14000); });
-    child.stderr.on('data', d => { stderr = (stderr + String(d)).slice(-14000); });
-    const timeout = setTimeout(() => { timedOut = true; child.kill(); }, Math.min(Number(options.timeoutMs) || 60000, 300000));
+    let stdout = '', stderr = '', timedOut = false, settled = false, child, timer, fallback;
     const finish = (code, error) => {
       if (settled) return;
-      settled = true; clearTimeout(timeout);
-      resolve({ ok: code === 0 && !timedOut && !error, code, timedOut, stdout, stderr, error: error ? error.message : null });
+      settled = true;
+      clearTimeout(timer); clearTimeout(fallback);
+      resolve({ ok: code === 0 && !error && !timedOut, code, timedOut,
+        stdout, stderr, error: error ? String(error.message || error) : null });
     };
-    child.on('error', e => finish(null, e));
-    child.on('close', code => finish(code, null));
+    try {
+      child = spawn(args[0], args.slice(1), {
+        cwd: project, shell: false, windowsHide: true,
+        detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe']
+      });
+    } catch (error) { finish(null, error); return; }
+    child.stdout.on('data', d => { stdout = (stdout + String(d)).slice(-14000); });
+    child.stderr.on('data', d => { stderr = (stderr + String(d)).slice(-14000); });
+    child.once('error', e => finish(null, e));
+    child.once('close', code => finish(code, null));
+    timer = setTimeout(() => {
+      if (settled) return;
+      timedOut = true;
+      if (process.platform === 'win32') {
+        const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'],
+          { windowsHide: true, stdio: 'ignore' });
+        killer.on('error', () => { try { child.kill(); } catch {} });
+      } else {
+        try { process.kill(-child.pid, 'SIGKILL'); }
+        catch { try { child.kill('SIGKILL'); } catch {} }
+      }
+      fallback = setTimeout(() => finish(null, new Error('VERIFY_TIMEOUT')), 5000);
+    }, Math.min(Math.max(Number(options.timeoutMs) || 60000, 100), 300000));
   });
 }
 
@@ -108,6 +137,12 @@ async function runCodingLoop(options) {
   const state = { project, goal, verifyCommand, status: 'running', rounds: [], startedAt: new Date().toISOString() };
   const baseline = await runner(project, verifyCommand, options);
   state.baseline = baseline;
+  if (baseline.ok === true) {
+    state.status = 'baseline-passing';
+    state.completedAt = new Date().toISOString();
+    await report(reportDir, state);
+    return state;
+  }
   await report(reportDir, state);
   let lastResult = baseline;
   const touched = new Set();
@@ -122,21 +157,28 @@ async function runCodingLoop(options) {
       } catch { /* do not infer unseen contents */ }
       if (JSON.stringify(sources).length > 60000) break;
     }
-    const patch = await model([
+    let patch;
+    try {
+      patch = await model([
       { role: 'system', content: 'You are a coding agent. Return one JSON object with path, oldText, newText, reason. Only replace one exact existing source substring. Do not change tests or verification. Do not claim success. Do not output shell commands.' },
       { role: 'user', content: JSON.stringify({ goal, files: sources, round: index + 1, inventory: files, previousVerification: lastResult, verificationCommand: verifyCommand }) }
-    ], options.modelConfig);
+      ], options.modelConfig);
+    } catch (error) {
+      state.rounds.push({ index: index + 1, outcome: 'model-error', error: String(error.message || error) });
+      break;
+    }
     const turn = { index: index + 1, path: patch?.path || null, reason: patch?.reason || '' };
     try {
       if (typeof patch.oldText !== 'string' || !patch.oldText || typeof patch.newText !== 'string' || patch.newText.length > 30000) throw new Error('INVALID_PATCH');
       const { rel, real } = await existingSource(project, patch.path);
       if (!files.includes(rel)) throw new Error('UNKNOWN_FILE');
-      if (/(\.test|\.spec)\.[cm]?js$/.test(rel)) throw new Error('TEST_EDIT_REFUSED');
+      if (isVerificationArtifact(rel, verifyCommand)) throw new Error('TEST_EDIT_REFUSED');
       const before = await fsp.readFile(real, 'utf8');
       const count = before.split(patch.oldText).length - 1;
       if (count !== 1) throw new Error('PATCH_MATCH_COUNT_' + count);
       const after = before.replace(patch.oldText, patch.newText);
       if (before === after) throw new Error('NO_CHANGE');
+      if (await fsp.readFile(real, 'utf8') !== before) throw new Error('SOURCE_CHANGED_CONCURRENTLY');
       await fsp.writeFile(real, after, 'utf8');
       touched.add(rel);
       turn.changed = { path: rel, beforeSha: sha(before), afterSha: sha(after) };
@@ -166,4 +208,4 @@ async function runCodingLoop(options) {
   return state;
 }
 
-module.exports = { runCodingLoop, deepseek, runCommand, relativeFile };
+module.exports = { runCodingLoop, deepseek, runCommand, relativeFile, isVerificationArtifact };
