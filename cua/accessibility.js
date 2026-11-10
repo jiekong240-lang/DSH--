@@ -107,43 +107,51 @@ async function getAccessibilityTree(maxChildren = 12) {
  * 按名称（模糊匹配）搜索焦点窗口内的元素
  * 返回带 BoundingRectangle 的候选，供点击使用
  */
-async function findElementsByName(namePattern, maxResults = 8) {
+async function findElementsByName(namePattern, maxResults = 8, runner = runPowerShell) {
   if (!namePattern || typeof namePattern !== 'string') {
     return { ts: Date.now(), matches: [], note: 'invalid pattern' };
   }
   const safe = namePattern.replace(/'/g, "''").slice(0, 80);
+  const limit = Number.isInteger(maxResults) ? Math.min(30, Math.max(1, maxResults)) : 8;
   const cmd = `
     try {
       Add-Type -AssemblyName UIAutomationClient
       $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
       if (-not $focused) { exit }
       $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
-      $matches = @()
+      $root = $focused
+      for ($i = 0; $i -lt 20; $i++) {
+        if ($root.Current.ControlType -eq [System.Windows.Automation.ControlType]::Window) { break }
+        $parent = $walker.GetParent($root)
+        if (-not $parent -or $parent -eq [System.Windows.Automation.AutomationElement]::RootElement) { break }
+        $root = $parent
+      }
+      $found = New-Object 'System.Collections.Generic.List[object]'
       function Search($el, $depth) {
-        if ($depth -gt 3 -or $matches.Count -ge ${maxResults}) { return }
+        if ($depth -gt 5 -or $found.Count -ge ${limit}) { return }
         $name = $el.Current.Name
-        if ($name -and $name -like '*${safe}*') {
-          $matches += [PSCustomObject]@{
+        if ($name -and $name.IndexOf('${safe}', [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+          $found.Add([PSCustomObject]@{
             Name = $name
             ControlType = $el.Current.ControlType.ProgrammaticName
             ClassName = $el.Current.ClassName
             IsEnabled = $el.Current.IsEnabled
             BoundingRectangle = $el.Current.BoundingRectangle.ToString()
-          }
+          })
         }
         $child = $walker.GetFirstChild($el)
-        while ($child -and $matches.Count -lt ${maxResults}) {
+        while ($child -and $found.Count -lt ${limit}) {
           Search $child ($depth + 1)
           $child = $walker.GetNextSibling($child)
         }
       }
-      Search $focused 0
-      $matches | ConvertTo-Json -Compress
+      Search $root 0
+      $found.ToArray() | ConvertTo-Json -Compress
     } catch {
       Write-Error $_.Exception.Message
     }
   `;
-  const r = await runPowerShell(cmd);
+  const r = await runner(cmd);
   let matches = [];
   if (r.ok && r.stdout) {
     try {
@@ -184,24 +192,26 @@ async function getClickableElements(max = 10) {
  */
 function parseBoundingRectangle(rectStr) {
   if (!rectStr || typeof rectStr !== 'string') return null;
-  const cleaned = rectStr.replace(/[{}]/g, '').replace(/\s+/g, '');
-  const parts = {};
-  for (const pair of cleaned.split(',')) {
-    const [k, v] = pair.split('=');
-    if (k && v) parts[k.trim().toLowerCase()] = parseFloat(v);
+  const cleaned = rectStr.trim().replace(/[{}]/g, '');
+  let values;
+  if (/(?:^|,)\s*[Xx]\s*=/.test(cleaned)) {
+    const fields = {};
+    for (const part of cleaned.split(',')) {
+      const pair = part.split('=');
+      if (pair.length !== 2) return null;
+      fields[pair[0].trim().toLowerCase()] = Number(pair[1].trim());
+    }
+    values = [fields.x, fields.y, fields.width, fields.height];
+  } else {
+    values = cleaned.split(',').map(part => Number(part.trim()));
   }
-  const x = parts.x;
-  const y = parts.y;
-  const w = parts.width;
-  const h = parts.height;
-  if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) return null;
+  if (values.length !== 4 || !values.every(Number.isFinite)) return null;
+  const [x, y, width, height] = values;
+  if (width <= 0 || height <= 0) return null;
   return {
-    x: Math.round(x),
-    y: Math.round(y),
-    width: Math.round(w),
-    height: Math.round(h),
-    centerX: Math.round(x + w / 2),
-    centerY: Math.round(y + h / 2),
+    x: Math.round(x), y: Math.round(y),
+    width: Math.round(width), height: Math.round(height),
+    centerX: Math.round(x + width / 2), centerY: Math.round(y + height / 2),
   };
 }
 
