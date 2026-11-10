@@ -195,10 +195,10 @@ function ingestEvent(e) {
 /* 监控服务必须常驻: 任何意外异常记日志后继续运行 */
 process.on('uncaughtException', (e) => console.error('[monitor] uncaught:', String(e && e.stack || e)));
 process.on('unhandledRejection', (e) => console.error('[monitor] rejection:', String(e && e.stack || e)));
-function countEvents() {
+function countEvents(events = eventBuf) {
   /* null 原型: 防止恶意 kind(如 "constructor")命中 Object 原型键 */
   const c = Object.assign(Object.create(null), { code: 0, exec: 0, scan: 0, error: 0, task: 0, other: 0 });
-  for (const e of eventBuf) if (e.kind in c) c[e.kind]++; else c.other++;
+  for (const e of events) if (e.kind in c) c[e.kind]++; else c.other++;
   return c;
 }
 
@@ -325,6 +325,11 @@ const server = http.createServer(async (req, res) => {
           target: String(b.target || '').slice(0, 140),
           status: String(b.status || 'ok').slice(0, 16),
         };
+        if (!Number.isFinite(e.ts)) {
+          res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'ts must be finite epoch milliseconds' }));
+          return;
+        }
         /* 写码事件 -> 登记文件 + 捕获真实代码 diff, 供大屏展示 */
         let fi = null;
         if (e.kind === 'code') {
@@ -350,13 +355,19 @@ const server = http.createServer(async (req, res) => {
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
     // Validate: if either from/to is provided but not a valid number → 400
-    if ((from !== null && isNaN(Number(from))) || (to !== null && isNaN(Number(to)))) {
+    if ((from !== null && (from.trim() === '' || !Number.isFinite(Number(from)))) ||
+        (to !== null && (to.trim() === '' || !Number.isFinite(Number(to))))) {
       res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ error: 'from/to must be valid epoch milliseconds' }));
       return;
     }
     const fromNum = from !== null ? Number(from) : null;
     const toNum = to !== null ? Number(to) : null;
+    if (fromNum !== null && toNum !== null && fromNum > toNum) {
+      res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'from must not be greater than to' }));
+      return;
+    }
     const filtered = eventBuf.filter((e) => {
       const ts = e.ts;
       if (fromNum !== null && ts < fromNum) return false;
@@ -364,7 +375,7 @@ const server = http.createServer(async (req, res) => {
       return true;
     });
     res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(JSON.stringify({ events: filtered, counts: countEvents() }));
+    res.end(JSON.stringify({ events: filtered, counts: countEvents(), filteredCounts: countEvents(filtered) }));
     return;
   }
   if (url.pathname === '/api/files') {
@@ -474,10 +485,10 @@ seedScan();
 let sentinel = null;
 try {
   const { Sentinel } = require('./sentinel/sentinel.cjs');
-  sentinel = new Sentinel().init({
+  if (process.env.SENTINEL_DISABLE !== '1') sentinel = new Sentinel().init({
     collectMetrics: () => getMetrics(),
     pushEvent: (e) => ingestEvent({
-      seq: ++eventSeq, ts: e.ts || Date.now(), source: e.source || 'sentinel',
+      seq: ++eventSeq, ts: Number.isFinite(e.ts) ? e.ts : Date.now(), source: e.source || 'sentinel',
       kind: e.kind || 'task', tool: e.tool || '', target: e.target || '', status: e.status || 'ok',
     }),
     toast: (msg, urgent) => broadcast(JSON.stringify({ type: 'sentinel_toast', msg, urgent: !!urgent, ts: Date.now() })),

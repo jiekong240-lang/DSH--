@@ -933,19 +933,29 @@ function updateMode(now) {
 }
 
 /* ---------------- 事件范围过滤 ---------------- */
+let eventFilterRequestId = 0;
 function applyEventFilter() {
-  const from = Number($('filterFrom').value) || null;
-  const to = Number($('filterTo').value) || null;
-  if (isNaN(from) && $('filterFrom').value !== '') { alert('from 必须是有效的毫秒数'); return; }
-  if (isNaN(to) && $('filterTo').value !== '') { alert('to 必须是有效的毫秒数'); return; }
+  const fromRaw = String($('filterFrom').value || '').trim();
+  const toRaw = String($('filterTo').value || '').trim();
+  const from = fromRaw === '' ? null : Number(fromRaw);
+  const to = toRaw === '' ? null : Number(toRaw);
+  if (fromRaw !== '' && !Number.isFinite(from)) { alert('from 必须是有效的毫秒数'); return Promise.resolve(false); }
+  if (toRaw !== '' && !Number.isFinite(to)) { alert('to 必须是有效的毫秒数'); return Promise.resolve(false); }
+  if (from !== null && to !== null && from > to) { alert('from 不能大于 to'); return Promise.resolve(false); }
   const params = new URLSearchParams();
-  if ($('filterFrom').value !== '') params.set('from', $('filterFrom').value);
-  if ($('filterTo').value !== '') params.set('to', $('filterTo').value);
-  fetch('/api/events?' + params.toString(), { cache: 'no-store' })
-    .then((r) => r.json())
+  if (from !== null) params.set('from', String(from));
+  if (to !== null) params.set('to', String(to));
+  const requestId = ++eventFilterRequestId;
+  return fetch('/api/events?' + params.toString(), { cache: 'no-store' })
+    .then((r) => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then((d) => {
+      if (requestId !== eventFilterRequestId) return false;
       const list = $('feedList');
-      if (!list) return;
+      if (!list) return false;
+      if (!Array.isArray(d.events)) throw new Error('事件响应没有 events 数组');
       activity.list = (d.events || []).map((e) => ({
         ts: e.ts, kind: e.kind, tool: e.tool, target: e.target, source: e.source,
         file: e.file, diff: e.diff,
@@ -956,12 +966,14 @@ function applyEventFilter() {
         const date = new Date(e.ts);
         return `<div class="fitem k-${esc(e.kind)}"><span class="t">${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}</span><span class="k">${KIND_ICON[e.kind] || '◇'}</span><span class="tg" title="${esc(e.tool)} ${esc(e.target)}">${esc(e.tool || e.kind)}${e.target ? ' · ' + esc(e.target) : ''}</span><span class="src">${esc(e.source)}</span></div>`;
       }).join('');
-      $('cntCode').textContent = activity.counts.code;
-      $('cntExec').textContent = activity.counts.exec;
-      $('cntScan').textContent = activity.counts.scan;
-      $('cntErr').textContent = activity.counts.error;
+      const counts = d.filteredCounts || d.counts || {};
+      $('cntCode').textContent = counts.code || 0;
+      $('cntExec').textContent = counts.exec || 0;
+      $('cntScan').textContent = counts.scan || 0;
+      $('cntErr').textContent = counts.error || 0;
+      return true;
     })
-    .catch((e) => console.error('事件过滤错误:', e));
+    .catch((e) => { if (requestId === eventFilterRequestId) console.error('事件过滤错误:', e); return false; });
 }
 
 $('filterBtn').addEventListener('click', applyEventFilter);
