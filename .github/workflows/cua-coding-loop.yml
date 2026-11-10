@@ -35,6 +35,10 @@ jobs:
           node --check cua/code-task.js
           node --check server.js
           node --check test-events-filter.cjs
+      - name: Syntax check all CUA tests
+        shell: bash
+        run: |
+          for file in cua/tests/*.test.cjs; do node --check "$file"; done
       - name: Run offline loop tests
         run: node --test cua/tests/*.test.cjs
       - name: Real monitor API and filter function regression

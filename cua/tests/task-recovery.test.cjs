@@ -194,7 +194,7 @@ test('restart reconciles already-observed goal without retyping', async () => fi
   assert.equal(writes, 0);
   assert.equal(store.loadTask().steps.length, 0);
   assert.equal(store.loadTask().pendingAction, undefined);
-});
+}));
 
 test('recovery observation failure retains checkpoint and never replays', async () => fixture(async file => {
   const store = createTaskStore(file);
