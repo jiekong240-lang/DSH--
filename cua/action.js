@@ -107,11 +107,11 @@ async function execute(decision) {
   if (action.startsWith('fc-') || action === 'freecad' || action === 'fc-box' || action === 'fc-step') {
     let r;
     if (action === 'fc-box' || action === 'fc-create-box') {
-      r = await freecad.createVerifiedBox(step.length || 50, step.width || 30, step.height || 20, step.outPath);
+      r = await freecad.createVerifiedBox({ length: step.length ?? 50, width: step.width ?? 30, height: step.height ?? 20, outPath: step.outPath });
     } else if (action === 'fc-script' || action === 'fc-run') {
       r = await freecad.runScript(step.scriptPath || step.target);
     } else if (action === 'fc-step' || action === 'fc-export-step') {
-      r = await freecad.exportStep(step.fcstd || step.target, step.outPath);
+      r = await freecad.exportStep({ fcstdPath: step.fcstd || step.target, outPath: step.outPath });
     } else {
       r = await freecad.runScript(step.scriptPath || step.target);
     }
