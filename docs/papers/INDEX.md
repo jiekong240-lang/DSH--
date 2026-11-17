@@ -1,7 +1,7 @@
 # 文献总表（INDEX）
 
 > 按「干活缺口」归类。详细模块映射见 [`../references/CUA_FRONTIER_REFERENCES.md`](../references/CUA_FRONTIER_REFERENCES.md)。  
-> 更新：2026-11-15（UTC+8）
+> 更新：2026-11-17（UTC+8）
 
 ## 完成率 / 评测尺子
 
@@ -14,6 +14,7 @@
 | ScaleCUA | https://arxiv.org/abs/2509.15221 | 跨平台开源 CUA 数据缩放；OSWorld-G / WindowsArena 完成率基线 |
 | NorthCUA | https://arxiv.org/abs/2611.02102 | 经验飞轮 + 已验证里程碑续跑；开源桌面/Web 完成率新标尺 |
 | CUA-Master | https://arxiv.org/abs/2611.03126 | OSWorld Verified 80.2 / OSWorld 2.0 36.9；快照回滚重试采集 |
+| WindowsWorld | https://arxiv.org/abs/2604.27776 | Windows 跨应用专业工作流（181 题，78% 跨应用）；跨应用完成率 <21%，早期子目标易卡住 |
 
 ## 长程 / 续跑 / 规划
 
@@ -34,6 +35,10 @@
 | Folio | https://arxiv.org/abs/2611.16627 | 运行时多分辨率折叠加句柄恢复；替代模型摘要压缩，保住工具证据并可续跑 |
 | Keeping LLM Agents on Procedure | https://arxiv.org/abs/2611.10884 | 可执行 FSM 把 SOP 状态放在运行时；重述或 resume 修不了漂移 |
 | OS-Wizard | https://arxiv.org/abs/2610.33907 | 教程+GUI–Code+关键态快照分叉采集；ScienceBoard 5.9%→64.1%，亦利一般桌面任务 |
+| HerAgent | https://arxiv.org/abs/2611.18443 | 环境搭建用语义块级检查点回滚；Installamatic-Bench 52%→85%，SetupBench 46.3%→70.4% |
+| Co-Sight Harness | https://arxiv.org/abs/2611.17696 | 外置状态机+可机检验收门；已部署超 200 步工作流无人值守完成率 50%→100% |
+| Actor, Judge, or Teacher? | https://arxiv.org/abs/2611.17167 | 差的 actor 仍可当轨迹教师；JEV 把 1.5B 策略 ALFWorld 72.8%→82.9%、WebShop 56.8%→71.4% |
+| ToolCUA | https://arxiv.org/abs/2605.12481 | 学习 GUI 与工具切换的更短路径；OSWorld-MCP 46.85%，相对基线约 +66% |
 
 ## 记忆 / 状态携带
 
@@ -43,6 +48,8 @@
 | MemU-Bench | https://arxiv.org/abs/2611.00191 | 依赖历史的模糊任务尺子；用 SPL 揭穿穷搜假绿，AppMem 结构化召回 |
 | TAM（Task Advancement Memory） | https://arxiv.org/abs/2610.37482 | 以已验证进展为状态；跨应用累积成果并抽象可复用操作 |
 | FGSE（When Should Agents Remember?） | https://arxiv.org/abs/2611.14326 | 经验先当假说，经迁移/证伪/回归探针通过才写入持久记忆 |
+| When Should LLM Agents Forget? | https://arxiv.org/abs/2611.17338 | 解析器不可靠时不要硬删；误删伤害大于误留，默认无标签保留 |
+| Can Agents Keep Up with Time? | https://arxiv.org/abs/2611.17806 | 会话再唤起须把当前时间用进计划；能读时钟仍按过期安排办事等于状态没带上 |
 
 ## 成本约束级联路由
 
@@ -67,12 +74,14 @@
 | Coati | https://arxiv.org/abs/2611.02644 | 宿主证据审计完成声称（不足则 unverified）；只记已验证的按应用记忆 |
 | Same Error, Different Recovery | https://arxiv.org/abs/2611.11581 | 工具错误的投递方式改变恢复行为；保留失败交换并分类指导，减少空转与假做成 |
 | AgentHorizon | https://arxiv.org/abs/2610.11050 | 长程跨系统 CUA 法官基准；配对负例检验能否拒绝「做的是另一件事」的假绿 |
+| Verification Transport | https://arxiv.org/abs/2611.18471 | 轨迹经压缩/委派后法官判决会漂；传输失败约 31%，还原出处可挽回 85.5% |
 
 ## Windows / 进程编排
 
 | 标题 | 链接 | 作用 |
 |------|------|------|
 | UFO2: The Desktop AgentOS | https://arxiv.org/abs/2504.14603 | Windows RDP 环回会话隔离与 Host/App 编排 |
+| WindowsWorld | https://arxiv.org/abs/2604.27776 | 专业跨应用 Windows 工作流尺子；跨应用 <21%，≥3 个应用的条件推理易在早期停住 |
 
 ## 工程实现（非论文）
 
@@ -93,3 +102,4 @@
 | [2026-11-11](batches/2026-11-11.md) | 双日检索新增 9 篇：开源完成率新标尺、快照回滚、记忆评测、声称探测续跑、失败恢复、仓库任务切换、弱→强成本升级 |
 | [2026-11-13](batches/2026-11-13.md) | 双日检索新增 5 篇：宿主证据反假绿、长程视觉 token 降本、文档→技能演化 bootstrap、按 EpG 选择失败恢复、错误投递与自我纠错 |
 | [2026-11-15](batches/2026-11-15.md) | 双日检索新增 7 篇：可恢复上下文折叠、证伪门控记忆、GUI 级联定位、SOP 运行时 FSM、专用软件教程+快照 bootstrap、可控工具调用效率、长程 CUA 法官评测 |
+| [2026-11-17](batches/2026-11-17.md) | 双日检索新增 8 篇：验证判决跨抽象传输、块级环境搭建检查点、外置 SOP 验收门、会话再唤起时间状态、记忆遗忘门控、轨迹教师、Windows 跨应用尺子、GUI–工具路径编排 |
