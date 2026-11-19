@@ -1,7 +1,7 @@
 # 文献总表（INDEX）
 
 > 按「干活缺口」归类。详细模块映射见 [`../references/CUA_FRONTIER_REFERENCES.md`](../references/CUA_FRONTIER_REFERENCES.md)。  
-> 更新：2026-11-17（UTC+8）
+> 更新：2026-11-19（UTC+8）
 
 ## 完成率 / 评测尺子
 
@@ -15,6 +15,7 @@
 | NorthCUA | https://arxiv.org/abs/2611.02102 | 经验飞轮 + 已验证里程碑续跑；开源桌面/Web 完成率新标尺 |
 | CUA-Master | https://arxiv.org/abs/2611.03126 | OSWorld Verified 80.2 / OSWorld 2.0 36.9；快照回滚重试采集 |
 | WindowsWorld | https://arxiv.org/abs/2604.27776 | Windows 跨应用专业工作流（181 题，78% 跨应用）；跨应用完成率 <21%，早期子目标易卡住 |
+| UIAnchor | https://arxiv.org/abs/2611.20753 | 动作前核验+动作后结果感知+定向恢复；L4 跨应用细粒度任务相对 GPT-4o / Mobile-Agent-v3 成功率提高 31.5% / 16.6% |
 
 ## 长程 / 续跑 / 规划
 
@@ -39,6 +40,9 @@
 | Co-Sight Harness | https://arxiv.org/abs/2611.17696 | 外置状态机+可机检验收门；已部署超 200 步工作流无人值守完成率 50%→100% |
 | Actor, Judge, or Teacher? | https://arxiv.org/abs/2611.17167 | 差的 actor 仍可当轨迹教师；JEV 把 1.5B 策略 ALFWorld 72.8%→82.9%、WebShop 56.8%→71.4% |
 | ToolCUA | https://arxiv.org/abs/2605.12481 | 学习 GUI 与工具切换的更短路径；OSWorld-MCP 46.85%，相对基线约 +66% |
+| PACT | https://arxiv.org/abs/2611.22591 | 保护已验证计划、只修错误动作；AndroidWorld 60.34%→68.97%，OSWorld 369 题 40.92%→44.17% |
+| RepoFactory | https://arxiv.org/abs/2611.21152 | 真实仓库→可验证「从规格搭项目」环境并进化；NL2Repo-Bench 增益 17.5→22.6 个百分点 |
+| RIPPLE | https://arxiv.org/abs/2610.31276 | 把察觉-诊断-纠偏内化进单一自恢复策略；四项仓库级基准平均 +4.8 分，部署不再另挂批评者 |
 
 ## 记忆 / 状态携带
 
@@ -50,6 +54,9 @@
 | FGSE（When Should Agents Remember?） | https://arxiv.org/abs/2611.14326 | 经验先当假说，经迁移/证伪/回归探针通过才写入持久记忆 |
 | When Should LLM Agents Forget? | https://arxiv.org/abs/2611.17338 | 解析器不可靠时不要硬删；误删伤害大于误留，默认无标签保留 |
 | Can Agents Keep Up with Time? | https://arxiv.org/abs/2611.17806 | 会话再唤起须把当前时间用进计划；能读时钟仍按过期安排办事等于状态没带上 |
+| AdMem | https://arxiv.org/abs/2611.20605 | 逐步期望-落地信用 + 效用召回/淘汰；AgentBoard 707 题完成 441，对 ReAct 388；无结构堆积记忆可能更差 |
+| StaleBench | https://arxiv.org/abs/2611.19752 | 隔离过期检索：相似度排第一仍可能用旧事实；Contamination@5 才能正确比较记忆策略 |
+| LEDGER | https://arxiv.org/abs/2611.20927 | 用显式规则决定当前值、信任来源与删除，并审计送入模型的证据；编码工作负载正确率高于全量回放 |
 
 ## 成本约束级联路由
 
@@ -61,6 +68,7 @@
 | Visual Token Routing (VTR) | https://arxiv.org/abs/2611.06854 | 长程截图只保留对下一步有用的视觉 token；降本且对齐全分辨率完成率 |
 | GroundCascade | https://arxiv.org/abs/2611.13177 | 全屏与放大一致走快路径，不一致才请第二意见；少调用强模型抬升 GUI grounding |
 | CARE-PO | https://arxiv.org/abs/2611.12125 | 按任务难度固定调用预算锚点；一次训练给出效率/能力工作点，避免零工具坍缩 |
+| MARC（When the Cheapest Feasible Router Fails） | https://arxiv.org/abs/2611.20417 | 最便宜且审计通过的路由仍有 32.22% 部署违约；MARC-P 把条件失败降到 0.73% |
 
 ## 状态一致性 / 真绿 / 最小安全
 
@@ -75,6 +83,8 @@
 | Same Error, Different Recovery | https://arxiv.org/abs/2611.11581 | 工具错误的投递方式改变恢复行为；保留失败交换并分类指导，减少空转与假做成 |
 | AgentHorizon | https://arxiv.org/abs/2610.11050 | 长程跨系统 CUA 法官基准；配对负例检验能否拒绝「做的是另一件事」的假绿 |
 | Verification Transport | https://arxiv.org/abs/2611.18471 | 轨迹经压缩/委派后法官判决会漂；传输失败约 31%，还原出处可挽回 85.5% |
+| EVIDENT | https://arxiv.org/abs/2611.20488 | 把表面完成（TSR）与证据观察（ESR）、声称级支撑（GSR）分开，避免 GUI 任务假绿 |
+| AgentLens | https://arxiv.org/abs/2605.12925 | 通过轨迹中 10.7% 为 Lucky Pass；用过程质量分而非通过率排名，部分模型会移动多达五个名次 |
 
 ## Windows / 进程编排
 
@@ -103,3 +113,4 @@
 | [2026-11-13](batches/2026-11-13.md) | 双日检索新增 5 篇：宿主证据反假绿、长程视觉 token 降本、文档→技能演化 bootstrap、按 EpG 选择失败恢复、错误投递与自我纠错 |
 | [2026-11-15](batches/2026-11-15.md) | 双日检索新增 7 篇：可恢复上下文折叠、证伪门控记忆、GUI 级联定位、SOP 运行时 FSM、专用软件教程+快照 bootstrap、可控工具调用效率、长程 CUA 法官评测 |
 | [2026-11-17](batches/2026-11-17.md) | 双日检索新增 8 篇：验证判决跨抽象传输、块级环境搭建检查点、外置 SOP 验收门、会话再唤起时间状态、记忆遗忘门控、轨迹教师、Windows 跨应用尺子、GUI–工具路径编排 |
+| [2026-11-19](batches/2026-11-19.md) | 双日检索新增 10 篇：计划-动作一致性修复、GUI 证据接地尺子、跨应用动作核验与恢复、仓库环境进化 bootstrap、自恢复编码策略、期望落地过程记忆、过期检索评测、可审计记忆账本、路由部署承诺审计、Lucky Pass 轨迹评测 |
